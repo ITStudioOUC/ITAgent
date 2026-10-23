@@ -4,7 +4,7 @@
 
 - Language: Rust (edition 2024), single binary `ita`, cargo workspace
 - Build: `cargo build` / `cargo test`; async only in I/O crates (never in `ita-kernel`)
-- Test runner: `cargo nextest run -p <crate> --no-tests=pass`（空测试集不算失败）；
+- Test runner: `cargo nextest run -p <crate>`（零测试视为失败，已不再是空工作区）；
   `cargo bench`（criterion）用于本地零成本基准
 - Benchmark tooling: local-only spans/benches (no paid eval runs). See `perf` archive.
 - Storage: SQLite (bundled, WAL) via `rusqlite`, single writer confined to the server

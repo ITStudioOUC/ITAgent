@@ -1,0 +1,9 @@
+[package]
+name = "ita-worker"
+description = "工作区 worker：无状态、不连数据库、不持有模型凭据"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]

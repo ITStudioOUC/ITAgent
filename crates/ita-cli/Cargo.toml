@@ -1,0 +1,13 @@
+[package]
+name = "ita-cli"
+description = "ita 单二进制：按角色自我分发到 master、worker 或 tool-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ita"
+path = "src/main.rs"
+
+[dependencies]

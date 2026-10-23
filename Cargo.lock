@@ -3,28 +3,32 @@
 version = 4
 
 [[package]]
+name = "ita-cli"
+version = "0.1.6"
+
+[[package]]
 name = "ita-exec"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "ita-kernel"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "ita-model"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "ita-proto"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "ita-sandbox"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "ita-server"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "ita-model",
  "ita-proto",
@@ -34,12 +38,16 @@ dependencies = [
 
 [[package]]
 name = "ita-store"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "ita-tools"
-version = "0.1.5"
+version = "0.1.6"
+
+[[package]]
+name = "ita-worker"
+version = "0.1.6"
 
 [[package]]
 name = "ita-workflow"
-version = "0.1.5"
+version = "0.1.6"
