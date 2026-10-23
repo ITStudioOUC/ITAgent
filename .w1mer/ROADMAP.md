@@ -51,7 +51,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | 02.2 | 内核纯净门与依赖断言 | .w1mer/detail/01_plan-02.md | done | 0 | 纯净门落地：crate 内 clippy 配置 83 行、内核两条 deny、脚本断言零普通依赖且无 build.rs；注入 Instant::now 实测 clippy 退出 101、脚本退出 1，还原后通过；版本 0.1.1 |
 | 02.2.1 | 补审纯净门并核对 CI 方案 | — | done | 0 | 四处缺口关闭：dev 依赖与构建脚本不再有豁免通道，补八个 std 入口，注释改为与实测一致；三项验证与纯净门全绿 |
 | 02.3 | CI 流水线五项门 | .w1mer/detail/01_plan-02.md | done | 0 | 三个并行 job 落地（格式、clippy 与纯净门、构建与测试），五道门与本地三件套一致；审查关闭两处文档问题并补上一处流程缺陷（版本推进须同步锁文件），版本 0.1.3 |
-| 02.4 | 基础层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | todo | 0 | |
+| 02.4 | 基础层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | done | 0 | 四个基础层 crate 空壳落地且互不依赖，内核依赖仍为空；审查抓出三处将导致返工的缺陷（forbid 挡 FFI、版本推进只刷一条锁记录、纯净门检查越界）并已修复，版本 0.1.4 |
 | 02.5 | 上层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.6 | 单二进制角色分发与 worker 空壳 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.7 | 收口：文档同步与骨架验收 | .w1mer/detail/01_plan-02.md | todo | 0 | |
