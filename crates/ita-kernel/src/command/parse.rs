@@ -27,6 +27,22 @@ use super::lex::{TokenKind, scan};
 /// heredoc 的正文从 `<<` 之后的第一个换行开始，因此同一行里 `<<` 之后只能出现分隔符。
 /// 出现别的词一律按语法错误处理——否则"正文从哪里开始"会有歧义。
 pub fn parse(input: &str, max_body: usize) -> Result<Command, ParseError> {
+    parse_with_limits(input, max_body, MAX_TOKENS)
+}
+
+/// 与 [`parse`] 相同，但记号上限也由调用方给出。
+///
+/// # 边界与前提
+/// 上限在词法扫描之后检查，因此它限制的是装配阶段的工作量，不是输入字节数；输入规模由
+/// 调用方在更外层限制。
+///
+/// # 副作用
+/// 无。
+pub fn parse_with_limits(
+    input: &str,
+    max_body: usize,
+    max_tokens: usize,
+) -> Result<Command, ParseError> {
     if input.trim().is_empty() {
         return Err(ParseError::Empty);
     }
@@ -35,15 +51,28 @@ pub fn parse(input: &str, max_body: usize) -> Result<Command, ParseError> {
     if tokens.is_empty() {
         return Err(ParseError::Empty);
     }
-    if tokens.len() > MAX_TOKENS {
-        return Err(ParseError::TooManyTokens { count: tokens.len(), limit: MAX_TOKENS });
+    if tokens.len() > max_tokens {
+        return Err(ParseError::TooManyTokens { count: tokens.len(), limit: max_tokens });
+    }
+
+    // 结构约束在装配之前检查：`<<` 一旦被处理就会吃掉余下输入，装配过程中看不到
+    // 第二个 heredoc，只能提前数。
+    let heredoc_count = tokens.iter().filter(|t| t.kind == TokenKind::HereDocStart).count();
+    let has_read_redirect = tokens.iter().any(|t| t.kind == TokenKind::Read);
+    if heredoc_count > 1 || (heredoc_count == 1 && has_read_redirect) {
+        let offset = tokens
+            .iter()
+            .filter(|t| t.kind == TokenKind::HereDocStart)
+            .nth(1)
+            .or_else(|| tokens.iter().find(|t| t.kind == TokenKind::Read))
+            .map_or(0, |t| t.offset);
+        return Err(ParseError::ConflictingHereDoc { offset });
     }
 
     let mut program: Option<String> = None;
     let mut args = Vec::new();
     let mut redirects = Vec::new();
     let mut heredoc = None;
-    let mut saw_read_redirect = false;
 
     let mut iter = tokens.into_iter().peekable();
     while let Some(token) = iter.next() {
@@ -76,18 +105,15 @@ pub fn parse(input: &str, max_body: usize) -> Result<Command, ParseError> {
                         op: op_text(kind).to_owned(),
                     });
                 };
-                if kind == RedirectKind::Read {
-                    saw_read_redirect = true;
+                if path.is_empty() {
+                    return Err(ParseError::MissingTarget {
+                        offset: target.offset,
+                        op: op_text(kind).to_owned(),
+                    });
                 }
                 redirects.push(Redirect { kind, target: path });
             }
             TokenKind::HereDocStart => {
-                if heredoc.is_some() {
-                    return Err(ParseError::ConflictingHereDoc { offset: token.offset });
-                }
-                if saw_read_redirect {
-                    return Err(ParseError::ConflictingHereDoc { offset: token.offset });
-                }
                 // 正文从 `<<` 之后的换行开始；把这一段的绝对起点交给扫描器。
                 let rest = &input[token.offset + 2..];
                 heredoc = Some(scan_heredoc(rest, max_body)?);
@@ -236,6 +262,38 @@ mod tests {
     fn 解析结果可以还原成可执行命令() {
         let c = ok("ita edit a.rs <<'ITA_EOF'\nx\nITA_EOF\n");
         assert_eq!(c.to_string(), "ita edit a.rs <<'ITA_EOF'\nx\nITA_EOF");
+    }
+
+    #[test]
+    fn 参数里的等号原样保留() {
+        let c = ok("ita run --max=10 --name=a=b");
+        assert_eq!(c.args, vec!["run", "--max=10", "--name=a=b"]);
+    }
+
+    #[test]
+    fn 命令名带引号也可以() {
+        let c = ok("'ita' edit a.rs");
+        assert_eq!(c.program, "ita");
+    }
+
+    #[test]
+    fn 重定向目标是空串时被拒() {
+        let e = err("ita cat > \"\"");
+        assert!(matches!(e, ParseError::MissingTarget { .. }));
+    }
+
+    #[test]
+    fn 记号上限可配置() {
+        let e = parse_with_limits("ita a b c d", 1024, 2).expect_err("应当被拒");
+        assert!(matches!(e, ParseError::TooManyTokens { count: 5, limit: 2 }));
+    }
+
+    #[test]
+    fn 同一行两个_heredoc_报冲突() {
+        // 词法只扫第一行，因此第二个 `<<` 必须出现在同一行才能被看见；换行之后的内容
+        // 已经属于正文。
+        let e = err("ita a <<'X' <<'Y'\nbody\nX");
+        assert!(matches!(e, ParseError::ConflictingHereDoc { .. }));
     }
 
     #[test]
