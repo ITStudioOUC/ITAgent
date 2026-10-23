@@ -233,7 +233,11 @@ fn node_to_message(node: &super::node::Node, segment: Segment) -> Option<Message
         ),
         NodeBody::ToolCall { command } => (MessageRole::ToolCall, command.clone()),
         NodeBody::ToolResult { preview, exit_code, .. } => {
-            (MessageRole::ToolResult, format!("[退出码 {exit_code}] {preview}"))
+            // 工具结果只取预览的第一条非空行：整段预览可能是 4 KiB，而它已经由
+            // 内容寻址存储保存，需要全文时按节点编号取回。
+            let line =
+                preview.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("（无输出）");
+            (MessageRole::ToolResult, format!("[退出码 {exit_code}] {line}"))
         }
         NodeBody::Notice { text } => (MessageRole::System, text.clone()),
         NodeBody::Todo { items } => (
