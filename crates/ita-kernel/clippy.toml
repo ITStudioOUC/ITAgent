@@ -1,0 +1,83 @@
+# ita-kernel 的纯净门配置。
+#
+# cargo clippy 按被检 crate 的清单目录查找 clippy.toml，所以本文件只约束本 crate，
+# 工作区其他成员（存储、网络、执行器）不受影响。
+#
+# 目录段不支持通配符，条目必须写到具体类型或函数；写错的条目会被 clippy 报成
+# "不指向可达类型"，配合 `-D warnings` 直接失败，因此拼写错误不会静默失效。
+
+# 拿到就必然做 IO 的类型：文件句柄、套接字、子进程、线程句柄。
+disallowed-types = [
+  "std::fs::DirBuilder",
+  "std::fs::File",
+  "std::fs::Metadata",
+  "std::fs::OpenOptions",
+  "std::fs::ReadDir",
+  "std::net::TcpListener",
+  "std::net::TcpStream",
+  "std::net::UdpSocket",
+  "std::process::Child",
+  "std::process::Command",
+  "std::process::Stdio",
+  "std::thread::Builder",
+  "std::thread::JoinHandle",
+  "std::thread::Thread",
+]
+
+disallowed-methods = [
+  # 读时钟：内核里的时间只能由调用方作为参数传入。
+  "std::time::Instant::elapsed",
+  "std::time::Instant::now",
+  "std::time::SystemTime::elapsed",
+  "std::time::SystemTime::now",
+  # 文件系统。
+  "std::fs::canonicalize",
+  "std::fs::copy",
+  "std::fs::create_dir",
+  "std::fs::create_dir_all",
+  "std::fs::hard_link",
+  "std::fs::metadata",
+  "std::fs::read",
+  "std::fs::read_dir",
+  "std::fs::read_link",
+  "std::fs::read_to_string",
+  "std::fs::remove_dir",
+  "std::fs::remove_dir_all",
+  "std::fs::remove_file",
+  "std::fs::rename",
+  "std::fs::set_permissions",
+  "std::fs::symlink_metadata",
+  "std::fs::write",
+  # 网络。
+  "std::net::TcpListener::bind",
+  "std::net::TcpStream::connect",
+  "std::net::UdpSocket::bind",
+  # 进程与线程：一旦能起子进程或后台线程，就不再是可重放的纯函数。
+  "std::process::abort",
+  "std::process::exit",
+  "std::thread::Builder::new",
+  "std::thread::park",
+  "std::thread::park_timeout",
+  "std::thread::scope",
+  "std::thread::sleep",
+  "std::thread::spawn",
+  "std::thread::yield_now",
+  # 环境变量：同一份输入在不同环境下会得到不同结果。
+  "std::env::args",
+  "std::env::args_os",
+  "std::env::current_dir",
+  "std::env::current_exe",
+  "std::env::remove_var",
+  "std::env::set_var",
+  "std::env::temp_dir",
+  "std::env::var",
+  "std::env::var_os",
+  "std::env::vars",
+  "std::env::vars_os",
+  # 写标准输出与标准错误也是 IO；print! 与 println! 展开成这两个内部函数。
+  "std::io::_eprint",
+  "std::io::_print",
+  "std::io::stderr",
+  "std::io::stdin",
+  "std::io::stdout",
+]
