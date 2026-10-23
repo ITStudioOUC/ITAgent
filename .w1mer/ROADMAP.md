@@ -97,7 +97,7 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 | 05 | 语义压缩：事务性切换 + 保留 3 轮 + 事实层 | — | active | 0 |
 | 05.1 | 压缩输出格式与解析 | .w1mer/detail/04_plan-05.md | done | 0 | 压缩输出契约落地：散文段与结束标记严格校验，事实层不接收模型输入，截断/超长与随机性错误分成两类重试判据；174 项测试全绿，版本 0.1.18 |
 | 05.2 | 触发阈值与预留预算 | .w1mer/detail/04_plan-05.md | done | 0 | 压缩触发落地：该压与能压分开判定，剩余空间不足时明确拒绝而不是硬压，零剩余空间一律不可压；181 项测试全绿，版本 0.1.19 |
-| 05.3 | 轮边界与折叠范围 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.3 | 轮边界与折叠范围 | .w1mer/detail/04_plan-05.md | done | 0 | 轮边界统一为用户消息并复用 opens_turn，覆盖范围止于保留起点，固定层与待办不参与折叠，区分历史太短与压无可压；191 项测试全绿，版本 0.1.20 |
 | 05.4 | 保留轮次工具正文瘦身 | .w1mer/detail/04_plan-05.md | todo | 0 | |
 | 05.5 | 事实层组装与必填校验 | .w1mer/detail/04_plan-05.md | todo | 0 | |
 | 05.6 | 提交计划与 head 比较并交换 | .w1mer/detail/04_plan-05.md | todo | 0 | |
