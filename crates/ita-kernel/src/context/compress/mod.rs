@@ -7,12 +7,14 @@
 //! 边界之所以这样划，是因为内核不能做 IO：一旦这里能调用模型，压缩就再也无法在不联网的
 //! 情况下单测，而压缩逻辑恰恰是最需要穷举测试的部分。
 
+pub mod commit;
 pub mod facts;
 pub mod fold;
 pub mod format;
 pub mod recent;
 pub mod trigger;
 
+pub use commit::{CommitError, CommitPlan, HeadTokenLike, plan as plan_commit};
 pub use facts::{Facts, FactsError, Failure, FileChange};
 pub use fold::{FoldError, FoldPlan, plan as plan_fold};
 pub use format::{
