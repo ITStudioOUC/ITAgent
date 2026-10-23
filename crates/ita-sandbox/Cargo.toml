@@ -1,0 +1,9 @@
+[package]
+name = "ita-sandbox"
+description = "沙箱策略与平台实现"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]

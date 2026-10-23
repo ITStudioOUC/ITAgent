@@ -17,7 +17,16 @@ die() { printf '内核纯净门失败：%s\n' "$*" >&2; exit 1; }
 if ! metadata=$(cargo metadata --no-deps --locked --format-version 1 2>/dev/null); then
   die "cargo metadata 执行失败"
 fi
-if printf '%s' "$metadata" | grep -q '"custom-build"'; then
+# 只检查内核自己的 target：其它成员将来可以有 build.rs，不能误伤。
+if ! printf '%s' "$metadata" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for pkg in d["packages"]:
+    if pkg["name"] == "ita-kernel":
+        kinds = {k for t in pkg["targets"] for k in t["kind"]}
+        sys.exit(1 if "custom-build" in kinds else 0)
+sys.exit(2)
+'; then
   die "ita-kernel 不应有构建脚本（custom-build target）"
 fi
 

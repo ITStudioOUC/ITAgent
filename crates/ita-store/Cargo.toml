@@ -1,0 +1,9 @@
+[package]
+name = "ita-store"
+description = "存储层：SQLite、内容寻址存储与快照"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]

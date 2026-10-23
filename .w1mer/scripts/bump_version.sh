@@ -50,16 +50,21 @@ text = text[: m.start(1)] + section_new + text[m.end(1):]
 open(path, "w", encoding="utf-8").write(text)
 print(f"版本 {old} -> {new}")
 
-# Cargo.lock 记录的是成员包的版本号，改完清单必须同步刷新，否则 CI 的 --locked
-# 会直接失败。这里只改本地这一条记录，不访问网络。
+# Cargo.lock 记录每个成员包的版本号，改完清单必须同步刷新，否则 CI 的 --locked
+# 会直接失败。这里按块更新所有本地成员（无 source 行），不访问网络。
 lock = pathlib.Path("Cargo.lock")
 if lock.exists():
     body = lock.read_text(encoding="utf-8")
-    updated = body.replace(f'name = "ita-kernel"\nversion = "{old}"',
-                           f'name = "ita-kernel"\nversion = "{new}"')
-    if updated != body:
-        lock.write_text(updated, encoding="utf-8")
-        print(f"Cargo.lock 同步为 {new}")
+    blocks = body.split("[[package]]")
+    out, changed = [blocks[0]], 0
+    for blk in blocks[1:]:
+        if "source = " not in blk and f'version = "{old}"' in blk:
+            blk = blk.replace(f'version = "{old}"', f'version = "{new}"', 1)
+            changed += 1
+        out.append(blk)
+    if changed:
+        lock.write_text("[[package]]".join(out), encoding="utf-8")
+        print(f"Cargo.lock 同步 {changed} 个本地成员为 {new}")
     else:
-        print("警告：Cargo.lock 里没有找到 ita-kernel 的版本记录，请手动核对")
+        print("警告：Cargo.lock 里没有找到版本为旧值的本地成员，请手动核对")
 PY

@@ -3,5 +3,21 @@
 version = 4
 
 [[package]]
+name = "ita-exec"
+version = "0.1.4"
+
+[[package]]
 name = "ita-kernel"
-version = "0.1.3"
+version = "0.1.4"
+
+[[package]]
+name = "ita-proto"
+version = "0.1.4"
+
+[[package]]
+name = "ita-sandbox"
+version = "0.1.4"
+
+[[package]]
+name = "ita-store"
+version = "0.1.4"

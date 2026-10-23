@@ -1,0 +1,9 @@
+[package]
+name = "ita-proto"
+description = "协议信封与本地帧编解码"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]

@@ -1,0 +1,9 @@
+[package]
+name = "ita-exec"
+description = "工作区执行器：租约、权限预检与进程组回收"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
