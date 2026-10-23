@@ -175,3 +175,10 @@ state: active
   编号"在单条消息里不成立，命令只能靠相邻的调用消息推断；`line` 直接取 4 KiB 预览的首行且不截断，
   无换行的大段输出省不下预算，首行为空而后续有内容时还会误报"（无输出）"；内核只产出编号，
   接收编号取回原文的工具与命令尚未在任何 crate 中定义。
+- 批次 05.5 新增 `crates/ita-kernel/src/context/compress/facts.rs`，并从 `compress` 模块导出
+  `Facts`、`FactsError` 与 `Failure`，版本推进到 0.1.22。契约层面新增压缩事实层的形状：
+  `Facts { changed_files, failures, rejected, checkpoint, turns }` 配 `validate` 与 `render`，
+  三条拒绝条件是轮数为零、有改动但无失败记录、已否决方案缺理由。四处待闭合：拒绝条件把
+  "有改动"与"有失败"绑成互为前提，纯注释或一次编译即过的批次会被拒绝出帧；0004 第 20 行
+  要求的实际耗时没有字段，时钟仍须由调用方传入；改动文件用三元组按位置表达增删行数；
+  失败记录的 `attempt` 与 `outcome` 未做空白校验，可与"不可修改"的渲染文案一起让失败项变空。

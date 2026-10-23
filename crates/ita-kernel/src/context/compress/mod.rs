@@ -13,7 +13,7 @@ pub mod format;
 pub mod recent;
 pub mod trigger;
 
-pub use facts::{Facts, FactsError, Failure};
+pub use facts::{Facts, FactsError, Failure, FileChange};
 pub use fold::{FoldError, FoldPlan, plan as plan_fold};
 pub use format::{
     CompressError, CompressOutput, END, PROMPT_VERSION, PROSE_CLOSE, PROSE_OPEN,

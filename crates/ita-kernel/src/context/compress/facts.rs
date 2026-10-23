@@ -18,11 +18,22 @@ pub struct Failure {
     pub outcome: String,
 }
 
+/// 一处文件改动。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileChange {
+    /// 路径。
+    pub path: String,
+    /// 新增行数。
+    pub added: u32,
+    /// 删除行数。
+    pub removed: u32,
+}
+
 /// 事实层。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Facts {
-    /// 被改动的文件，`(路径, 增行, 删行)`。
-    pub changed_files: Vec<(String, u32, u32)>,
+    /// 被改动的文件。
+    pub changed_files: Vec<FileChange>,
     /// 失败的尝试。
     pub failures: Vec<Failure>,
     /// 已否决的方案及理由。
@@ -31,18 +42,17 @@ pub struct Facts {
     pub checkpoint: Option<CheckpointId>,
     /// 这段历史跨过的轮数。
     pub turns: u32,
+    /// 这段历史实际耗时（秒）。用于事后判断"这一轮是不是卡住了"。
+    pub elapsed_secs: u64,
 }
 
 /// 事实层不完整。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FactsError {
-    /// 有改动但没有任何失败记录。
-    ///
-    /// 真实的开发过程几乎总有失败；一条都没有，通常意味着收集环节漏了，或者模型把失败
-    /// 写成了"探索"。两种情况都该拒绝出帧。
-    NoFailuresWithChanges {
-        /// 改动的文件数。
-        changed: usize,
+    /// 失败记录里有一条只有尝试或只有结果，渲染出来等于什么都没说。
+    IncompleteFailure {
+        /// 出问题的那条记录的位置。
+        index: usize,
     },
     /// 已否决的方案只写了名字没写理由。
     RejectedWithoutReason {
@@ -56,10 +66,9 @@ pub enum FactsError {
 impl std::fmt::Display for FactsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoFailuresWithChanges { changed } => write!(
-                f,
-                "改动了 {changed} 个文件却没有任何失败记录；失败记录不能为空，否则下一轮会重复已失败的方案"
-            ),
+            Self::IncompleteFailure { index } => {
+                write!(f, "第 {index} 条失败记录缺少尝试或结果，渲染出来等于没写")
+            }
             Self::RejectedWithoutReason { name } => {
                 write!(f, "已否决的方案 `{name}` 没有写理由，无法判断是否该重新考虑")
             }
@@ -75,10 +84,15 @@ impl Facts {
     ///
     /// # 步骤
     /// 1. 轮数不能为零。
-    /// 2. 有文件改动时必须有失败记录。
+    /// 2. 每条失败记录都要有尝试与结果两半。
     /// 3. 每条已否决方案都要有理由。
     ///
     /// # 边界与前提
+    /// **不要求"有改动就必须有失败"**：一个只改了一行注释、一次编译就过的批次确实可能
+    /// 没有失败，把它判为不合格会让压缩在实践中频繁失败。规则改为"失败小节永远输出"，
+    /// 没有失败时明确写"无失败尝试"——这比靠改动数推断可靠，也保住了"不要重复已失败方案"
+    /// 这个原始意图。
+    ///
     /// 只做结构校验，不判断内容质量。"失败记录写得是否准确"无法自动判定，只能靠"压缩后
     /// 是否重复已否决操作"这个离线指标来观察。
     ///
@@ -88,8 +102,10 @@ impl Facts {
         if self.turns == 0 {
             return Err(FactsError::EmptySpan);
         }
-        if !self.changed_files.is_empty() && self.failures.is_empty() {
-            return Err(FactsError::NoFailuresWithChanges { changed: self.changed_files.len() });
+        for (index, failure) in self.failures.iter().enumerate() {
+            if failure.attempt.trim().is_empty() || failure.outcome.trim().is_empty() {
+                return Err(FactsError::IncompleteFailure { index });
+            }
         }
         for (name, reason) in &self.rejected {
             if reason.trim().is_empty() {
@@ -108,18 +124,26 @@ impl Facts {
     /// # 副作用
     /// 无。
     pub fn render(&self) -> String {
-        let mut out = String::from("事实（由系统填写，不可修改）：\n");
+        // 不用"不可修改"这类祈使句：模型会倾向于在散文里复述约束，浪费预算。
+        // 用陈述句说明来源即可。
+        let mut out = String::from("事实记录：\n");
 
         if self.changed_files.is_empty() {
             out.push_str("- 未改动文件\n");
         } else {
             out.push_str("- 改动文件：\n");
-            for (path, added, removed) in &self.changed_files {
-                out.push_str(&format!("  - {path} (+{added}/-{removed})\n"));
+            for change in &self.changed_files {
+                out.push_str(&format!(
+                    "  - {} (+{}/-{})\n",
+                    change.path, change.added, change.removed
+                ));
             }
         }
 
-        if !self.failures.is_empty() {
+        // 失败小节永远输出：没有失败时明确写"无"，比省略更能阻止模型重复尝试。
+        if self.failures.is_empty() {
+            out.push_str("- 失败的尝试：无\n");
+        } else {
             out.push_str("- 失败的尝试（不要重复）：\n");
             for failure in &self.failures {
                 out.push_str(&format!("  - {} → {}\n", failure.attempt, failure.outcome));
@@ -137,6 +161,7 @@ impl Facts {
             out.push_str(&format!("- 检查点：{checkpoint}\n"));
         }
         out.push_str(&format!("- 覆盖轮数：{}\n", self.turns));
+        out.push_str(&format!("- 实际耗时：{} 秒\n", self.elapsed_secs));
         out
     }
 }
@@ -158,7 +183,16 @@ mod tests {
             rejected: vec![],
             checkpoint: None,
             turns: 1,
+            elapsed_secs: 30,
         }
+    }
+
+    fn change(path: &str) -> FileChange {
+        FileChange { path: path.to_owned(), added: 3, removed: 1 }
+    }
+
+    fn failure(attempt: &str, outcome: &str) -> Failure {
+        Failure { attempt: attempt.to_owned(), outcome: outcome.to_owned() }
     }
 
     #[test]
@@ -167,23 +201,38 @@ mod tests {
     }
 
     #[test]
-    fn 有改动但无失败记录被拒() {
+    fn 有改动但无失败也允许() {
+        // 只改了一行注释、一次编译就过的批次确实可能没有失败；把它判为不合格会让压缩
+        // 频繁失败。规则改为"失败小节永远输出"。
         let mut facts = minimal();
-        facts.changed_files = vec![("a.rs".to_owned(), 3, 1)];
-        let err = facts.validate().expect_err("应当被拒");
-        assert!(matches!(err, FactsError::NoFailuresWithChanges { changed: 1 }));
-        assert!(err.to_string().contains("重复已失败的方案"));
+        facts.changed_files = vec![change("a.rs")];
+        assert!(facts.validate().is_ok());
     }
 
     #[test]
-    fn 有改动且有失败记录通过() {
+    fn 失败小节永远输出且无失败时写明() {
         let mut facts = minimal();
-        facts.changed_files = vec![("a.rs".to_owned(), 3, 1)];
-        facts.failures = vec![Failure {
-            attempt: "cargo build".to_owned(),
-            outcome: "E0308 类型不匹配".to_owned(),
-        }];
+        facts.changed_files = vec![change("a.rs")];
+        let text = facts.render();
+        assert!(text.contains("失败的尝试：无"), "没有失败时必须明确写出来");
+    }
+
+    #[test]
+    fn 只有失败没有改动也允许() {
+        let mut facts = minimal();
+        facts.failures = vec![failure("cargo build", "E0308")];
         assert!(facts.validate().is_ok());
+        assert!(facts.render().contains("未改动文件"));
+    }
+
+    #[test]
+    fn 失败记录缺一半被拒() {
+        for (attempt, outcome) in [("cargo build", "  "), ("", "E0308")] {
+            let mut facts = minimal();
+            facts.failures = vec![failure(attempt, outcome)];
+            let err = facts.validate().expect_err("应当被拒");
+            assert!(matches!(err, FactsError::IncompleteFailure { index: 0 }));
+        }
     }
 
     #[test]
@@ -195,43 +244,54 @@ mod tests {
     }
 
     #[test]
-    fn 轮数为零被拒() {
+    fn 多条否决里只有一条缺理由也拒() {
+        let mut facts = minimal();
+        facts.rejected = vec![
+            ("方案 A".to_owned(), "缓存会失效".to_owned()),
+            ("方案 B".to_owned(), "".to_owned()),
+        ];
+        let err = facts.validate().expect_err("应当被拒");
+        assert!(matches!(err, FactsError::RejectedWithoutReason { ref name } if name == "方案 B"));
+    }
+
+    #[test]
+    fn 轮数为零优先于其它规则() {
         let mut facts = minimal();
         facts.turns = 0;
+        facts.failures = vec![failure("", "")];
+        // 优先级：轮数先判，避免调用方看到一条次要错误。
         assert_eq!(facts.validate(), Err(FactsError::EmptySpan));
     }
 
     #[test]
-    fn 渲染包含三类事实与检查点() {
+    fn 渲染包含五类事实() {
         let facts = Facts {
-            changed_files: vec![("a.rs".to_owned(), 3, 1)],
-            failures: vec![Failure {
-                attempt: "cargo test".to_owned(),
-                outcome: "2 个用例失败".to_owned(),
-            }],
+            changed_files: vec![change("a.rs")],
+            failures: vec![failure("cargo test", "2 个用例失败")],
             rejected: vec![("方案 B".to_owned(), "会让缓存失效".to_owned())],
             checkpoint: Some(checkpoint()),
             turns: 4,
+            elapsed_secs: 125,
         };
         let text = facts.render();
         assert!(text.contains("a.rs (+3/-1)"));
         assert!(text.contains("cargo test → 2 个用例失败"));
         assert!(text.contains("方案 B：会让缓存失效"));
         assert!(text.contains("覆盖轮数：4"));
+        assert!(text.contains("实际耗时：125 秒"));
         assert!(text.contains(BASE));
-        assert!(text.contains("不可修改"));
+    }
+
+    #[test]
+    fn 渲染用陈述句而不是祈使句() {
+        // "不可修改"这类祈使句会诱导模型在散文里复述约束，浪费预算。
+        let text = minimal().render();
+        assert!(!text.contains("不可修改"));
+        assert!(text.starts_with("事实记录："));
     }
 
     #[test]
     fn 无改动时明确写未改动() {
-        let text = minimal().render();
-        assert!(text.contains("未改动文件"));
-        assert!(!text.contains("失败的尝试"), "没有失败时不输出空小节");
-    }
-
-    #[test]
-    fn 事实段声明不可修改() {
-        // 这句话是给模型看的约束：它不该试图改写事实段。
-        assert!(minimal().render().contains("不可修改"));
+        assert!(minimal().render().contains("未改动文件"));
     }
 }
