@@ -62,7 +62,7 @@ fn cases() -> Vec<Case> {
             name: "后台执行",
             input: "ita a &",
             matches: |e| matches!(e, ParseError::UnsupportedOperator { .. }),
-            hint: "&",
+            hint: "后台执行",
         },
         Case {
             name: "管道",
@@ -110,7 +110,7 @@ fn cases() -> Vec<Case> {
             name: "herestring",
             input: "ita edit <<<EOF",
             matches: |e| matches!(e, ParseError::UnsupportedOperator { .. }),
-            hint: "<<",
+            hint: "herestring",
         },
         Case {
             name: "剥制表符的 heredoc",
@@ -182,7 +182,7 @@ fn cases() -> Vec<Case> {
             name: "非法分隔符字符",
             input: "ita edit <<'a.b'\nbody\na.b",
             matches: |e| matches!(e, ParseError::InvalidDelimiter { .. }),
-            hint: "分隔符",
+            hint: "只能含字母",
         },
         Case {
             name: "分隔符以连字符开头",
@@ -201,6 +201,12 @@ fn cases() -> Vec<Case> {
             input: "ita edit <<X\na\\nb\nX",
             matches: |e| matches!(e, ParseError::InvalidDelimiter { .. }),
             hint: "<<'",
+        },
+        Case {
+            name: "heredoc 终止行带回车",
+            input: "ita edit <<'X'\nbody\nX\r\n",
+            matches: |e| matches!(e, ParseError::UnterminatedHereDoc { .. }),
+            hint: "没有等到",
         },
         Case {
             name: "两个 heredoc",
@@ -223,15 +229,24 @@ fn 失败矩阵逐条命中() {
 
     for case in cases() {
         match parse(case.input, DEFAULT_MAX_BODY) {
-            Ok(cmd) => failures.push(format!("{}：应当被拒，却解析出 `{cmd}`", case.name)),
+            Ok(cmd) => failures.push(format!(
+                "{}：输入 `{}` 应当被拒，却解析出 `{cmd}`",
+                case.name,
+                case.input.escape_debug()
+            )),
             Err(err) => {
                 if !(case.matches)(&err) {
-                    failures.push(format!("{}：错误类别不符，实际 {err:?}", case.name));
+                    failures.push(format!(
+                        "{}：输入 `{}` 的错误类别不符，实际 {err:?}",
+                        case.name,
+                        case.input.escape_debug()
+                    ));
                 }
                 if !err.hint().contains(case.hint) {
                     failures.push(format!(
-                        "{}：诊断里缺少关键词 `{}`，实际为 `{}`",
+                        "{}：输入 `{}` 的诊断里缺少关键词 `{}`，实际为 `{}`",
                         case.name,
+                        case.input.escape_debug(),
                         case.hint,
                         err.hint()
                     ));
@@ -249,8 +264,9 @@ fn 失败矩阵逐条命中() {
 #[test]
 fn 每条拒绝都带可定位的偏移或明确说明() {
     for case in cases() {
-        let Err(err) = parse(case.input, DEFAULT_MAX_BODY) else {
-            continue;
+        let err = match parse(case.input, DEFAULT_MAX_BODY) {
+            Ok(_) => panic!("{}：用例表里的输入应当被拒", case.name),
+            Err(err) => err,
         };
         // 无位置信息的错误只允许是"整体性"的几种，其余必须给偏移。
         let whole_input = matches!(
@@ -267,6 +283,13 @@ fn 每条拒绝都带可定位的偏移或明确说明() {
             case.name
         );
     }
+}
+
+#[test]
+fn 空正文被接受且正文为空() {
+    let cmd = parse("ita edit <<'X'\nX", DEFAULT_MAX_BODY).expect("应当解析成功");
+    let doc = cmd.heredoc.expect("应当有正文");
+    assert_eq!(doc.body, "");
 }
 
 #[test]
@@ -294,6 +317,11 @@ fn 合法命令不被误拒() {
         "ita edit <<'ITA_EOF'\ncost $5 and `cmd`\nITA_EOF\n",
         "ita edit \"*.rs\"",
         "ita edit <<'X'\nX",
+        "ita edit <<\"X\"\nbody\nX",
+        "ita edit <<X\nclean body\nX",
+        // 分隔符行尾的回车按空白容忍：正文仍然逐字节精确，因此这处宽松不会造成静默
+        // 写错内容。终止行则必须与分隔符逐字节相等，带回车不算匹配。
+        "ita edit <<'X'\r\nbody\nX",
     ];
     for input in legal {
         assert!(parse(input, DEFAULT_MAX_BODY).is_ok(), "合法命令被拒：{input}");
