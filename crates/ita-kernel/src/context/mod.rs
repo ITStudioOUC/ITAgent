@@ -7,10 +7,14 @@
 //! 这条约束不是风格偏好：回退与压缩都只是改变输入，如果解析能自己读库或读时钟，两者就
 //! 无法共用同一套语义，replay 也会失真。
 
+pub mod budget;
 pub mod ids;
+pub mod input;
 pub mod node;
 pub mod tree;
 
+pub use budget::{Budget, BudgetError};
 pub use ids::{CheckpointId, IdError, NodeId, SessionId, WorkspaceId};
+pub use input::{CheckpointFacts, InputError, ResolveInput};
 pub use node::{BlobRef, Frame, Node, NodeBody, TurnRole};
 pub use tree::{HeadToken, Tree, TreeError};
