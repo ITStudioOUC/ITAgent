@@ -8,8 +8,10 @@
 //! 情况下单测，而压缩逻辑恰恰是最需要穷举测试的部分。
 
 pub mod format;
+pub mod trigger;
 
 pub use format::{
     CompressError, CompressOutput, END, PROMPT_VERSION, PROSE_CLOSE, PROSE_OPEN,
     format_instructions, parse_output,
 };
+pub use trigger::{TriggerDecision, decide};
