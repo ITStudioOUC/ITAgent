@@ -77,6 +77,13 @@ pub enum ParseError {
         /// 位置（字节偏移）。
         offset: usize,
     },
+    /// 记号数量超过上限，通常是参数被误写成了大量碎片。
+    TooManyTokens {
+        /// 实际数量。
+        count: usize,
+        /// 允许的上限。
+        limit: usize,
+    },
 }
 
 impl ParseError {
@@ -103,7 +110,7 @@ impl ParseError {
             | Self::InvalidDelimiter { offset, .. }
             | Self::TrailingText { offset, .. }
             | Self::ConflictingHereDoc { offset } => Some(*offset),
-            Self::BodyTooLarge { .. } => None,
+            Self::BodyTooLarge { .. } | Self::TooManyTokens { .. } => None,
         }
     }
 
@@ -151,6 +158,9 @@ impl ParseError {
             ),
             Self::ConflictingHereDoc { .. } => {
                 "一次调用只支持一个 heredoc，且不能与 `<` 同时使用。".to_owned()
+            }
+            Self::TooManyTokens { count, limit } => {
+                format!("记号数量 {count} 超过上限 {limit}，请把命令拆成多次调用。")
             }
         }
     }

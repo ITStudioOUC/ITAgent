@@ -136,7 +136,19 @@ fn split_delimiter(rest: &str) -> Result<(String, bool, &str, usize), ParseError
     };
 
     validate_delimiter(raw, base_offset)?;
-    Ok((raw.to_owned(), quoted, &trimmed[consumed..], base_offset + consumed))
+
+    // 分隔符所在行的其余部分必须是空白：正文从下一行开始，同行出现别的词会让"正文
+    // 从哪里开始"产生歧义。
+    let after = &trimmed[consumed..];
+    let line_end = after.find('\n').unwrap_or(after.len());
+    if let Some(offset) = after[..line_end].find(|c: char| !c.is_whitespace()) {
+        return Err(ParseError::TrailingText {
+            offset: base_offset + consumed + offset,
+            text: after[offset..line_end].chars().take(40).collect(),
+        });
+    }
+
+    Ok((raw.to_owned(), quoted, after, base_offset + consumed))
 }
 
 /// 校验分隔符的形状。

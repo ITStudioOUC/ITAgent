@@ -11,8 +11,10 @@ mod ast;
 mod error;
 mod heredoc;
 mod lex;
+mod parse;
 
 pub use ast::{Command, HereDoc, Redirect, RedirectKind};
 pub use error::ParseError;
 pub use heredoc::{DEFAULT_MAX_BODY, MAX_DELIMITER_LEN, scan_heredoc};
 pub use lex::{Token, TokenKind, scan};
+pub use parse::{MAX_TOKENS, parse, parse_with_defaults};
