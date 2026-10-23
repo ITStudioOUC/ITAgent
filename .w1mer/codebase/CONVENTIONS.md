@@ -27,6 +27,7 @@
 
 ## Docs
 
-- Design decisions live in `docs/design/NNNN-*.md` (ADR): decision, rationale,
-  **and rejected alternatives** (the rejected list is the valuable part).
+- Design decisions live in `docs/adr/NNNN-*.md` (ADR): status, decision, rationale,
+  consequences (including cost), and rejected alternatives. Accepted ADRs are never
+  edited; a changed decision gets a new ADR that points at the old one.
 - Planning docs live in `.w1mer/` and are driven only through the `w1mer` CLI.

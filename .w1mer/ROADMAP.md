@@ -30,7 +30,7 @@ top-level rows for work that fits inside an existing big task.
 Foundation tasks are hard prerequisites: everything after them codes against the
 contracts they freeze. Nothing else opens before 01 and 02 are done.
 
-- **01** freezes the design in `docs/design/` ADRs (including rejected
+- **01** freezes the design in `docs/adr/` ADRs (including rejected
   alternatives) so later batches never re-litigate settled questions.
 - **02** creates the workspace shape (`ita-kernel` pure layer first) so the
   separation is enforced by the compiler from day one.
@@ -38,7 +38,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:foundation -->
-| 01 | 设计决策固化：docs/design ADR 全套 | — | todo | 0 |
+| 01 | 设计决策固化：docs/adr 架构决策记录全套 | — | done | 0 | 十三份架构决策记录落在 docs/adr，覆盖内核边界、单库单写者、上下文树与解析、压缩、两层回滚、内容寻址快照、受限文法、原生工具调用、租约分层、沙箱保真度、工作流事件溯源、工具信任链、unit 监督；README 已按决策重写 |
 | 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | todo | 0 |
 
 

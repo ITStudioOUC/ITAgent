@@ -57,7 +57,7 @@ cargo clippy --workspace --all-targets   # 零新增告警（与改动前对比�
 - `type ∈ fix|feat|perf|refactor|test|docs|chore|style|bench|build|ci`
 - 禁止 scope 前缀（`kernel/lexer:` 这种）、禁止 `｜` 分隔、禁止内部编号（ROADMAP
   编号、ADR 编号）、禁止提交哈希、禁止测试计数
-- 主题写"改了什么、为什么"，不写实现步骤；细节写进 `.w1mer/` 或 `docs/design/`
+- 主题写"改了什么、为什么"，不写实现步骤；细节写进 `.w1mer/` 或 `docs/adr/`
 - 不用 `revert` 以外的动词开头，`revert:` 后接被撤销主题
 
 好例：
@@ -100,10 +100,12 @@ feat(kernel/lexer): 05.1 heredoc 状态机 + 失败矩阵 8 例 | 12 tests pass
 
 ## 6. 文档规范
 
-`.w1mer/` 下全部文档与 `docs/design/` 遵循 `.w1mer/DOC_GUIDELINES.md`：先结论后
+`.w1mer/` 下全部文档与 `docs/adr/` 遵循 `.w1mer/DOC_GUIDELINES.md`：先结论后
 数据、完整中文句、缩写首现释义、禁电报体与私有词汇。设计决策写 ADR
-（`docs/design/NNNN-*.md`），格式固定为**决策 / 理由 / 被否决的替代方案**，
-最后一项不可省——它让后续批次不再重开已经收敛的争论。
+（`docs/adr/NNNN-*.md`），五段固定格式：**状态 / 决策 / 理由 / 后果（含代价）/
+被否决的替代方案**。最后两段不可省：代价让后来人知道哪些问题是预期内的，
+被否决清单让后续批次不再重开已经收敛的争论。已采纳的 ADR 不再修改正文，决策变化时
+新写一份并互相指明。
 
 ## 7. 架构不变量（违反即返工）
 
