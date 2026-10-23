@@ -18,7 +18,7 @@ esac
 [ -f Cargo.toml ] || { echo "缺少根 Cargo.toml" >&2; exit 1; }
 
 python3 - "$mode" <<'PY'
-import re, sys
+import re, sys, pathlib
 
 mode = sys.argv[1]
 path = "Cargo.toml"
@@ -49,4 +49,17 @@ section_new = section[: vm.start()] + f'version = "{new}"' + section[vm.end():]
 text = text[: m.start(1)] + section_new + text[m.end(1):]
 open(path, "w", encoding="utf-8").write(text)
 print(f"版本 {old} -> {new}")
+
+# Cargo.lock 记录的是成员包的版本号，改完清单必须同步刷新，否则 CI 的 --locked
+# 会直接失败。这里只改本地这一条记录，不访问网络。
+lock = pathlib.Path("Cargo.lock")
+if lock.exists():
+    body = lock.read_text(encoding="utf-8")
+    updated = body.replace(f'name = "ita-kernel"\nversion = "{old}"',
+                           f'name = "ita-kernel"\nversion = "{new}"')
+    if updated != body:
+        lock.write_text(updated, encoding="utf-8")
+        print(f"Cargo.lock 同步为 {new}")
+    else:
+        print("警告：Cargo.lock 里没有找到 ita-kernel 的版本记录，请手动核对")
 PY

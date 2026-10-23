@@ -67,6 +67,6 @@ jobs:
         with:
           tool: cargo-nextest
       - run: cargo build --workspace --locked
-      # 当前工作区尚无测试，故放行空测试集。
+      # 当前工作区尚无测试，故允许通过空测试集。
       # 首个真实测试合入后必须删除 --no-tests=pass，恢复默认的 fail 语义。
       - run: cargo nextest run --workspace --locked --no-tests=pass
