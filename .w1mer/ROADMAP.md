@@ -47,7 +47,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | 01 | 设计决策固化：docs/adr 架构决策记录全套 | — | done | 0 | 十三份架构决策记录落在 docs/adr，覆盖内核边界、单库单写者、上下文树与解析、压缩、两层回滚、内容寻址快照、受限文法、原生工具调用、租约分层、沙箱保真度、工作流事件溯源、工具信任链、unit 监督；README 已按决策重写 |
 | 01.1 | 审查架构决策记录的内部一致性与可执行性 | — | done | 0 | 六条决策矛盾全部由新 ADR 0014 至 0018 关闭，探针字段与参数表补齐，README 与不变量表同步修订 |
 | 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | active | 0 |
-| 02.1 | 根清单与内核空壳 | .w1mer/detail/01_plan-02.md | todo | 0 | |
+| 02.1 | 根清单与内核空壳 | .w1mer/detail/01_plan-02.md | done | 0 | 工作区单成员、内核零依赖、版本 0.1.0 由 workspace.package 唯一来源；review 判 ok，纯净门的可执行方案已实测并归档 |
 | 02.2 | 内核纯净门与依赖断言 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.3 | CI 流水线五项门 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.4 | 基础层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | todo | 0 | |
