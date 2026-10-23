@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的新推送取消上一轮未完成的 run，避免过期任务继续占用 runner。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI 只读仓库内容，不需要写权限。
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # 增量编译在 CI 上没有意义：缓存目录每次都是新的，只会多占空间。
+  CARGO_INCREMENTAL: "0"
+
+# job 拓扑：fmt 不编译，单独一个秒级 job；clippy 与内核纯净门共用一套 target 与缓存；
+# 构建与测试放在同一个 job，因为 job 之间不共享文件系统，靠 artifact 传编译产物是负收益。
+# 三者并行，不设 needs——needs 只会把并行变串行。
+jobs:
+  fmt:
+    name: 格式
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  lint:
+    name: clippy 与内核纯净门
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # 依赖树与构建脚本两项检查不编译，放在 clippy 之前以尽早失败。
+      - name: 内核纯净门
+        run: bash .w1mer/scripts/check_kernel_purity.sh
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: 构建与测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo build --workspace --locked
+      # 当前工作区尚无测试，故放行空测试集。
+      # 首个真实测试合入后必须删除 --no-tests=pass，恢复默认的 fail 语义。
+      - run: cargo nextest run --workspace --locked --no-tests=pass

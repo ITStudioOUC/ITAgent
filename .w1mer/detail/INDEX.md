@@ -27,6 +27,7 @@
 | 16 | EPIC 17 埋点与基准的拆分依据 | active | [16_plan-17.md](16_plan-17.md) |
 | 17 | EPIC 18 工作区导入导出的拆分依据 | active | [17_plan-18.md](17_plan-18.md) |
 | 18 | EPIC 02.2 探针结论 | active | [18_plan-02-2.md](18_plan-02-2.md) |
+| 19 | EPIC 02.3 CI 方案核对 | active | [19_plan-02-3.md](19_plan-02-3.md) |
 <!-- /w1mer:rows -->
 
 ## Lifecycle
