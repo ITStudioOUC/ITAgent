@@ -82,25 +82,25 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:kernel -->
 | 03 | 受限 bash 文法：Command AST + lexer + heredoc + 失败矩阵 | — | active | 0 |
-| 03.1 | Command AST 类型与目标提取 | .w1mer/detail/01_plan-03.md | todo | 0 | |
-| 03.2 | 词法扫描：词、引号与算符 | .w1mer/detail/01_plan-03.md | todo | 0 | |
-| 03.3 | heredoc 状态机与十项失败 | .w1mer/detail/01_plan-03.md | todo | 0 | |
-| 03.4 | 语法装配：单命令与重定向 | .w1mer/detail/01_plan-03.md | todo | 0 | |
-| 03.5 | 失败矩阵总表与诊断 | .w1mer/detail/01_plan-03.md | todo | 0 | |
+| 03.1 | Command AST 类型与目标提取 | .w1mer/detail/02_plan-03.md | done | 0 | 命令语法树与错误类型冻结：读路径只取自输入重定向、写路径取自两种输出重定向并排序去重，Display 连 heredoc 正文一起输出因此可粘贴复现；13 项测试全绿，版本 0.1.8 |
+| 03.2 | 词法扫描：词、引号与算符 | .w1mer/detail/02_plan-03.md | todo | 0 | |
+| 03.3 | heredoc 状态机与十项失败 | .w1mer/detail/02_plan-03.md | todo | 0 | |
+| 03.4 | 语法装配：单命令与重定向 | .w1mer/detail/02_plan-03.md | todo | 0 | |
+| 03.5 | 失败矩阵总表与诊断 | .w1mer/detail/02_plan-03.md | todo | 0 | |
 | 04 | 上下文模型：Node/Frame/resolve/三态 notice/读集 | — | active | 0 |
-| 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/01_plan-04.md | todo | 0 | |
-| 04.2 | 上下文树：head、分叉与 CAS | .w1mer/detail/01_plan-04.md | todo | 0 | |
-| 04.3 | ResolveInput 与预算结构 | .w1mer/detail/01_plan-04.md | todo | 0 | |
-| 04.4 | 四段解析与逐字节复现 | .w1mer/detail/01_plan-04.md | todo | 0 | |
-| 04.5 | 漂移四组合通知 | .w1mer/detail/01_plan-04.md | todo | 0 | |
-| 04.6 | 读集记录与陈旧写判定 | .w1mer/detail/01_plan-04.md | todo | 0 | |
+| 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.2 | 上下文树：head、分叉与 CAS | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.3 | ResolveInput 与预算结构 | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.4 | 四段解析与逐字节复现 | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.5 | 漂移四组合通知 | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.6 | 读集记录与陈旧写判定 | .w1mer/detail/03_plan-04.md | todo | 0 | |
 | 05 | 语义压缩：事务性切换 + 保留 3 轮 + 事实层 | — | active | 0 |
-| 05.1 | 压缩输出格式与解析 | .w1mer/detail/01_plan-05.md | todo | 0 | |
-| 05.2 | 触发阈值与预留预算 | .w1mer/detail/01_plan-05.md | todo | 0 | |
-| 05.3 | 轮边界与折叠范围 | .w1mer/detail/01_plan-05.md | todo | 0 | |
-| 05.4 | 保留轮次工具正文瘦身 | .w1mer/detail/01_plan-05.md | todo | 0 | |
-| 05.5 | 事实层组装与必填校验 | .w1mer/detail/01_plan-05.md | todo | 0 | |
-| 05.6 | 提交计划与 head 比较并交换 | .w1mer/detail/01_plan-05.md | todo | 0 | |
+| 05.1 | 压缩输出格式与解析 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.2 | 触发阈值与预留预算 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.3 | 轮边界与折叠范围 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.4 | 保留轮次工具正文瘦身 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.5 | 事实层组装与必填校验 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.6 | 提交计划与 head 比较并交换 | .w1mer/detail/04_plan-05.md | todo | 0 | |
 
 
 
