@@ -168,3 +168,10 @@ state: active
   压缩时重建固定层、与待办须原样保留两条直接冲突；`FoldPlan.kept` 是单一列表，四段结构要求把它
   拆成最近轮次与当前待办两段，且 `history` 是否含旧帧未写明；`keep == 0` 分支的 `found` 硬写零，
   诊断会把非空历史报成空历史。
+- 批次 05.4 新增 `crates/ita-kernel/src/context/compress/recent.rs`，并从 `compress` 模块导出
+  `SlimToolResult`、`SlimError` 与 `slim`、`slim_all`、`render`，版本推进到 0.1.21。契约层面新增
+  保留轮次的工具结果形状 `SlimToolResult { node, line, exit_code, body }`，渲染文案为"退出码、
+  摘要、完整输出见节点"。三处待闭合：结构里没有命令字段，0004 第 43 行要求的"命令 + 一行结果 +
+  编号"在单条消息里不成立，命令只能靠相邻的调用消息推断；`line` 直接取 4 KiB 预览的首行且不截断，
+  无换行的大段输出省不下预算，首行为空而后续有内容时还会误报"（无输出）"；内核只产出编号，
+  接收编号取回原文的工具与命令尚未在任何 crate 中定义。

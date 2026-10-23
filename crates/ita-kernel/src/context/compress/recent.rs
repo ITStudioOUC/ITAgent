@@ -15,6 +15,11 @@ use super::super::node::{BlobRef, Node, NodeBody};
 pub struct SlimToolResult {
     /// 结果所属的节点，模型可以按它取回原文。
     pub node: NodeId,
+    /// 产生这条结果的命令。
+    ///
+    /// 必须带上：没有命令，模型看到一行 `error[E0308]` 时无法判断是哪次调用产生的，
+    /// 只能重跑一遍来确认。
+    pub command: Option<String>,
     /// 一行结果摘要。
     pub line: String,
     /// 退出码。
@@ -22,6 +27,12 @@ pub struct SlimToolResult {
     /// 原文句柄；没有正文时为空。
     pub body: Option<BlobRef>,
 }
+
+/// 一行结果的长度上限（字节）。
+///
+/// 预览可能是一整段没有换行的日志，取"第一行"并不能保证它短。超过上限时截断并加省略号，
+/// 否则"瘦身"对这类输出完全无效。
+pub const LINE_LIMIT: usize = 512;
 
 /// 瘦身时遇到的异常。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,24 +54,48 @@ impl std::error::Error for SlimError {}
 /// 把一条工具结果瘦身。
 ///
 /// # 步骤
-/// 1. 取预览的第一行作为一行结果。
-/// 2. 保留退出码与原文句柄。
+/// 1. 取预览里第一条非空行作为一行结果，超过 [`LINE_LIMIT`] 时截断。
+/// 2. 保留命令、退出码与原文句柄。
 ///
 /// # 边界与前提
-/// 预览为空时用"（无输出）"占位，而不是留空：空字符串在消息里看起来像渲染错误，模型会
-/// 试图重新执行命令来确认。多行预览只取第一行，其余靠节点编号寻回。
+/// 预览全为空时用"（无输出）"占位，而不是留空：空字符串在消息里看起来像渲染错误，模型会
+/// 试图重新执行命令来确认。跳过空行是因为工具输出常以空行开头，取第一行会得到空串。
+///
+/// `command` 由调用方传入（来自同一轮的 `ToolCall` 节点）：内核不维护"哪个调用产生了哪条
+/// 结果"的映射，那属于会话结构，由组装解析输入的一方负责。
 ///
 /// # 副作用
 /// 无。
-pub fn slim(node: &Node) -> Result<SlimToolResult, SlimError> {
+pub fn slim(node: &Node, command: Option<&str>) -> Result<SlimToolResult, SlimError> {
     let NodeBody::ToolResult { body, preview, exit_code } = &node.body else {
         return Err(SlimError::NotAToolResult(node.id.clone()));
     };
 
-    let line = preview.lines().next().unwrap_or("").trim();
-    let line = if line.is_empty() { "（无输出）".to_owned() } else { line.to_owned() };
+    let first = preview.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("");
+    let line = if first.is_empty() {
+        "（无输出）".to_owned()
+    } else if first.len() > LINE_LIMIT {
+        format!("{}…", &first[..floor_boundary(first, LINE_LIMIT)])
+    } else {
+        first.to_owned()
+    };
 
-    Ok(SlimToolResult { node: node.id.clone(), line, exit_code: *exit_code, body: body.clone() })
+    Ok(SlimToolResult {
+        node: node.id.clone(),
+        command: command.map(str::to_owned),
+        line,
+        exit_code: *exit_code,
+        body: body.clone(),
+    })
+}
+
+/// 找不超过 `limit` 的最大字符边界，避免按字节截断把多字节字符切开。
+fn floor_boundary(text: &str, limit: usize) -> usize {
+    let mut end = limit.min(text.len());
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
 }
 
 /// 把瘦身结果渲染成给模型看的一行。
@@ -71,18 +106,30 @@ pub fn slim(node: &Node) -> Result<SlimToolResult, SlimError> {
 /// # 副作用
 /// 无。
 pub fn render(slim: &SlimToolResult) -> String {
-    format!("[退出码 {}] {}（完整输出见节点 {}）", slim.exit_code, slim.line, slim.node)
+    let command = slim.command.as_deref().unwrap_or("（未知命令）");
+    format!(
+        "$ {command}\n[退出码 {}] {}（完整输出见节点 {}）",
+        slim.exit_code, slim.line, slim.node
+    )
 }
 
-/// 批量瘦身一组节点，非工具结果的节点原样跳过。
+/// 批量瘦身一组节点，非工具结果的节点跳过。
 ///
 /// # 边界与前提
-/// 顺序保持不变；跳过的节点不出现在结果里，调用方按节点 id 对齐。
+/// 顺序保持不变；跳过的节点不出现在结果里，调用方按节点 id 对齐。这里只吞掉
+/// [`SlimError::NotAToolResult`]——它目前是唯一的错误变体，将来若增加别的变体，必须
+/// 改成显式匹配，不能让新错误被静默跳过。
+///
+/// 每条结果的命令由调用方按会话结构配对；本函数不推断。
 ///
 /// # 副作用
 /// 无。
-pub fn slim_all(nodes: &[Node]) -> Vec<SlimToolResult> {
-    nodes.iter().filter_map(|n| slim(n).ok()).collect()
+pub fn slim_all(nodes: &[Node], commands: &[Option<String>]) -> Vec<SlimToolResult> {
+    nodes
+        .iter()
+        .zip(commands.iter().chain(std::iter::repeat(&None)))
+        .filter_map(|(node, command)| slim(node, command.as_deref()).ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -116,42 +163,77 @@ mod tests {
     }
 
     #[test]
-    fn 多行预览只保留第一行() {
-        let node = result_node(1, "第一行\n第二行\n第三行", 0);
-        let slim = slim(&node).expect("应当成功");
+    fn 多行预览只保留第一条非空行() {
+        let node = result_node(1, "\n第一行\n第二行", 0);
+        let slim = slim(&node, Some("ita edit a.rs")).expect("应当成功");
         assert_eq!(slim.line, "第一行");
         assert_eq!(slim.exit_code, 0);
+        assert_eq!(slim.command.as_deref(), Some("ita edit a.rs"));
+    }
+
+    #[test]
+    fn 超长单行被截断() {
+        let long = "x".repeat(LINE_LIMIT + 100);
+        let node = result_node(1, &long, 0);
+        let slim = slim(&node, None).expect("应当成功");
+        assert!(slim.line.len() <= LINE_LIMIT + "…".len());
+        assert!(slim.line.ends_with('…'));
+    }
+
+    #[test]
+    fn 截断不会切开多字节字符() {
+        let long = "中".repeat(LINE_LIMIT);
+        let node = result_node(1, &long, 0);
+        let slim = slim(&node, None).expect("应当成功");
+        // 只要能构造出字符串就没有切断字符边界（否则这里会 panic 在切片上）。
+        assert!(slim.line.ends_with('…'));
+    }
+
+    #[test]
+    fn 非零退出码时错误文本仍然保留() {
+        let node = result_node(1, "error[E0308]: mismatched types", 101);
+        let slim = slim(&node, Some("cargo build")).expect("应当成功");
+        assert_eq!(slim.exit_code, 101);
+        assert!(slim.line.contains("E0308"));
     }
 
     #[test]
     fn 空输出用占位而不是留空() {
         let node = result_node(1, "", 0);
-        let slim = slim(&node).expect("应当成功");
+        let slim = slim(&node, None).expect("应当成功");
         assert_eq!(slim.line, "（无输出）");
     }
 
     #[test]
     fn 只有空白的输出也用占位() {
         let node = result_node(1, "   \n\n", 0);
-        assert_eq!(slim(&node).expect("应当成功").line, "（无输出）");
+        assert_eq!(slim(&node, None).expect("应当成功").line, "（无输出）");
     }
 
     #[test]
     fn 原文句柄被保留以便寻回() {
         let node = result_node(1, "ok", 0);
-        let slim = slim(&node).expect("应当成功");
+        let slim = slim(&node, None).expect("应当成功");
         let body = slim.body.expect("应当有句柄");
         assert_eq!(body.len, 4096);
     }
 
     #[test]
-    fn 渲染结果带节点编号() {
+    fn 渲染结果带命令与节点编号() {
         let node = result_node(7, "ok", 2);
-        let slim = slim(&node).expect("应当成功");
+        let slim = slim(&node, Some("ita edit a.rs")).expect("应当成功");
         let text = render(&slim);
+        assert!(text.contains("$ ita edit a.rs"));
         assert!(text.contains("退出码 2"));
         assert!(text.contains("完整输出见节点"));
         assert!(text.contains(id(7).as_str()));
+    }
+
+    #[test]
+    fn 缺命令时明确标注未知() {
+        let node = result_node(7, "ok", 0);
+        let slim = slim(&node, None).expect("应当成功");
+        assert!(render(&slim).contains("未知命令"));
     }
 
     #[test]
@@ -165,7 +247,7 @@ mod tests {
                 text: "问".to_owned(),
             },
         };
-        assert!(matches!(slim(&node), Err(SlimError::NotAToolResult(_))));
+        assert!(matches!(slim(&node, None), Err(SlimError::NotAToolResult(_))));
     }
 
     #[test]
@@ -180,10 +262,12 @@ mod tests {
             },
             result_node(3, "b", 1),
         ];
-        let slimmed = slim_all(&nodes);
+        let commands = vec![Some("ita edit".to_owned()), None, Some("cargo test".to_owned())];
+        let slimmed = slim_all(&nodes, &commands);
         assert_eq!(slimmed.len(), 2);
         assert_eq!(slimmed[0].node, id(1));
         assert_eq!(slimmed[1].node, id(3));
+        assert_eq!(slimmed[1].command.as_deref(), Some("cargo test"));
     }
 
     #[test]
@@ -194,7 +278,7 @@ mod tests {
             session: session(),
             body: NodeBody::ToolResult { body: None, preview: "done".to_owned(), exit_code: 0 },
         };
-        let slim = slim(&node).expect("应当成功");
+        let slim = slim(&node, None).expect("应当成功");
         assert!(slim.body.is_none());
     }
 }
