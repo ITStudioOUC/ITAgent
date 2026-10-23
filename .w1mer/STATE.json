@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-23T22:04:21Z",
+  "updated": "2026-10-23T22:15:53Z",
   "current": "04.4",
   "tasks": {
     "01": {
@@ -376,7 +376,7 @@
     "04.4": {
       "type": "main",
       "base": "966474bb865439c0a4a32d21dc1a165f8a774a0b",
-      "end": null,
+      "end": "92160adec60cd2e0e12ac2e457c85a542a75d80e",
       "roles": {
         "reviewer": {
           "joined": true,
@@ -387,12 +387,12 @@
           "at": "2026-10-23T22:01:57Z"
         },
         "explorer": {
-          "joined": false,
-          "at": null
+          "joined": true,
+          "at": "2026-10-23T22:15:52Z"
         }
       },
       "started": "2026-10-23T22:01:56Z",
-      "ended": null
+      "ended": "2026-10-23T22:15:53Z"
     }
   }
 }
