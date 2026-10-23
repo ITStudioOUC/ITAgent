@@ -9,6 +9,8 @@
 
 mod ast;
 mod error;
+mod lex;
 
 pub use ast::{Command, HereDoc, Redirect, RedirectKind};
 pub use error::ParseError;
+pub use lex::{Token, TokenKind, scan};
