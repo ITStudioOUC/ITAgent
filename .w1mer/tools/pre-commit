@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# pre-commit 钩子：提交前格式化已暂存的 Rust 文件，把结果并入本次提交。
+#
+# 时间点选在提交前而非提交后：格式化属于本次改动的一部分，合成一个提交，不产生
+# 额外的 style 提交。只处理已暂存的文件，因此未暂存的在途工作既不被改写，也不会
+# 因为它的语法错误阻塞本次提交。
+#
+# 用 rustfmt 直接处理文件而非 cargo fmt --all：后者格式化整个 workspace，会把
+# 未暂存文件一并改写。rustfmt 同样读取祖先目录的 rustfmt.toml，格式结果一致。
+#
+# 仓库还没有 Cargo.toml 时跳过（骨架任务之前是正常状态）。合并提交跳过，避免在
+# 冲突状态下格式化。
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+[ -f Cargo.toml ] || exit 0
+command -v rustfmt >/dev/null 2>&1 || exit 0
+[ -f "$(git rev-parse --git-path MERGE_HEAD)" ] && exit 0
+
+# 只取已暂存且仍存在的 Rust 文件；删除的文件不需要格式化。
+staged_rs=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.rs$' || true)
+[ -n "$staged_rs" ] || exit 0
+
+# 版次取自 workspace 声明，读不到时退回 2024。
+edition=$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]\{4\}\)"/\1/p' Cargo.toml | head -n1)
+edition="${edition:-2024}"
+
+if ! fmt_output=$(printf '%s\n' $staged_rs | xargs rustfmt --edition "$edition" 2>&1); then
+  printf 'pre-commit 拒绝：已暂存文件格式化失败，代码可能无法解析。\n%s\n' "$fmt_output" >&2
+  exit 1
+fi
+
+# 格式化改动的是工作树，重新加回索引使其随本次提交生效。
+git add -- $staged_rs

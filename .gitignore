@@ -5,6 +5,6 @@
 target/
 
 # Agent
-# .w1mer/ is committed: planning docs are the cross-batch source of truth.
-AGENTS.md
+# .w1mer/ 与 AGENTS.md 都提交：前者是跨批次规划事实，后者是 SubAgent 在 worktree
+# 里唯一的约束入口（worktree 从 git 检出，未提交就不会出现在 worktree 中）。
 .ita/
