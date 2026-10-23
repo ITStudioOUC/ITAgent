@@ -193,13 +193,6 @@ fn scan_word(input: &str, start: usize) -> Result<(String, usize), ParseError> {
                     reason: "变量与命令替换都会让目标路径在执行前不可知",
                 });
             }
-            b'$' if bytes.get(i + 1) == Some(&b'(') => {
-                return Err(ParseError::UnsupportedOperator {
-                    offset: i,
-                    text: "$(".to_owned(),
-                    reason: "命令替换会绕过权限预检",
-                });
-            }
             b'\'' => {
                 let quote_start = i;
                 i += 1;
