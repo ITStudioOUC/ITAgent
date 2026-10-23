@@ -28,6 +28,11 @@
 ## Docs
 
 - Design decisions live in `docs/adr/NNNN-*.md` (ADR): status, decision, rationale,
-  consequences (including cost), and rejected alternatives. Accepted ADRs are never
-  edited; a changed decision gets a new ADR that points at the old one.
+  consequences (including cost), and rejected alternatives.
+- A changed decision requires a **new** ADR; the old and new ones point at each other
+  in their status sections. Editorial corrections (wrong fact, missing definition,
+  broken cross-reference) may be applied directly, with a revision line in the status
+  section. Test: would an already-implemented component become incompatible?
+- Version `0.<N>.<P>` lives in `Cargo.toml`; `N` bumps per epic, `P` per finished
+  batch. One bump per batch, in the last commit before `batch-end`.
 - Planning docs live in `.w1mer/` and are driven only through the `w1mer` CLI.

@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # 版本号推进：0.<N>.<P>，记于根 Cargo.toml 的 [workspace.package] version。
 #
-#   epic  新史诗开始：N 加一，P 归零（0.3.7 -> 0.4.0）
-#   task  同史诗内的子任务完成：P 加一（0.3.7 -> 0.3.8）
+#   epic   新史诗开始：N 加一，P 归零（0.3.7 -> 0.4.0）
+#   batch  同史诗内一个批次收尾：P 加一（0.3.7 -> 0.3.8）
 #
-# 由 Implementer / Fixer 在完成一个子任务的提交时执行。格式化类自动提交不推进。
-# 只改 Cargo.toml 里 [workspace.package] 段的 version，不碰依赖的版本声明。
+# 由 Implementer / Fixer 在 batch-end 之前的最后一次提交里执行。一个批次只推进一次。
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
 mode="${1:-}"
 case "$mode" in
-  epic|task) ;;
-  *) echo "用法：$0 <epic|task>" >&2; exit 1 ;;
+  epic|batch) ;;
+  *) echo "用法：$0 <epic|batch>" >&2; exit 1 ;;
 esac
 
 [ -f Cargo.toml ] || { echo "缺少根 Cargo.toml" >&2; exit 1; }
