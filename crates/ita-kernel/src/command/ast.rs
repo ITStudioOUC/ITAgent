@@ -22,7 +22,11 @@ pub enum RedirectKind {
 pub struct Redirect {
     /// 方向。
     pub kind: RedirectKind,
-    /// 目标路径，已做基础归一（去重斜杠、去掉末尾单斜杠），未做符号链接解析。
+    /// 目标路径。
+    ///
+    /// 解析器负责去掉多余的斜杠与末尾斜杠，但**不做**符号链接解析、大小写归一或与
+    /// 工作区根的拼接——那需要文件系统，而内核不碰文件系统。同一文件的不同写法在这里
+    /// 仍是不同的字符串，归一是资源键层（租约）的职责。
     pub target: String,
 }
 
@@ -104,8 +108,9 @@ impl fmt::Display for Command {
     /// 还原成可以直接粘贴到终端里的一行命令。
     ///
     /// # 边界与前提
-    /// 参数按需加单引号；含单引号的参数用双引号包裹。heredoc 不展开，只标出存在。
-    /// 这个输出用于日志与诊断，不保证与原输入逐字节相同。
+    /// 参数按需加单引号；含单引号的参数用双引号包裹。heredoc 连正文一起输出，因此结果
+    /// 粘到真实终端里可以直接执行，不会停在等待输入的状态。
+    /// 这个输出用于日志与复现，不保证与原输入逐字节相同（多余的引号会被省略）。
     ///
     /// # 副作用
     /// 无。
@@ -123,7 +128,13 @@ impl fmt::Display for Command {
             write!(f, " {op} {}", shell_word(&redirect.target))?;
         }
         if let Some(doc) = &self.heredoc {
-            write!(f, " <<'{}'", doc.delimiter)?;
+            // 正文必须一起输出：只写 `<<'X'` 的命令粘到真实终端里会等待输入而挂住，
+            // 而 0007 承诺命令是可以直接粘贴执行的。
+            write!(f, " <<'{}'\n{}", doc.delimiter, doc.body)?;
+            if !doc.body.ends_with('\n') {
+                writeln!(f)?;
+            }
+            write!(f, "{}", doc.delimiter)?;
         }
         Ok(())
     }
@@ -217,5 +228,31 @@ mod tests {
     fn 含单引号的参数改用双引号() {
         let c = cmd(&["it's"], vec![]);
         assert_eq!(c.to_string(), "ita \"it's\"");
+    }
+
+    #[test]
+    fn 带正文的命令粘贴后是完整命令() {
+        let mut c = cmd(&["edit", "a.rs"], vec![]);
+        c.heredoc =
+            Some(HereDoc { delimiter: "ITA_EOF".to_owned(), body: "fn main() {}\n".to_owned() });
+        assert_eq!(c.to_string(), "ita edit a.rs <<'ITA_EOF'\nfn main() {}\nITA_EOF");
+    }
+
+    #[test]
+    fn 正文缺少结尾换行时补一个() {
+        let mut c = cmd(&["edit"], vec![]);
+        c.heredoc =
+            Some(HereDoc { delimiter: "ITA_EOF".to_owned(), body: "no newline".to_owned() });
+        assert_eq!(c.to_string(), "ita edit <<'ITA_EOF'\nno newline\nITA_EOF");
+    }
+
+    #[test]
+    fn 追加写与读取可以同时存在() {
+        let c = cmd(
+            &[],
+            vec![redirect(RedirectKind::Append, "log.txt"), redirect(RedirectKind::Read, "in.txt")],
+        );
+        assert_eq!(c.read_paths(), vec!["in.txt"]);
+        assert_eq!(c.write_paths(), vec!["log.txt"]);
     }
 }

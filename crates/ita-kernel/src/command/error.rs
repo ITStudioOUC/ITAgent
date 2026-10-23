@@ -119,7 +119,14 @@ impl ParseError {
         match self {
             Self::Empty => "命令不能为空，请给出要执行的工具名与参数。".to_owned(),
             Self::UnsupportedOperator { text, reason, .. } => {
-                format!("不支持 `{text}`：{reason}。请拆成多次调用。")
+                let advice = match text.as_str() {
+                    "<<<" => {
+                        "这里指 herestring，它把字符串本身喂给标准输入；要提供正文请用 `<<` 加分隔符。"
+                    }
+                    "<<-" => "`<<-` 会剥掉正文的前导制表符，行为难以预测；请改用 `<<`。",
+                    _ => "请拆成多次调用。",
+                };
+                format!("不支持 `{text}`：{reason}。{advice}")
             }
             Self::GlobNotAllowed { ch, .. } => format!(
                 "不支持通配符 `{ch}`：写入目标必须在执行前已知，请显式列出路径或使用工具自己的过滤参数。"
