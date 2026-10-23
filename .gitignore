@@ -5,6 +5,6 @@
 target/
 
 # Agent
-.w1mer/
+# .w1mer/ is committed: planning docs are the cross-batch source of truth.
 AGENTS.md
 .ita/

@@ -1,0 +1,51 @@
+# W1MER archive schema
+# Lives in .w1mer/ (self-contained: schema + state + content).
+# Types declare: directory, file-naming pattern, state machine.
+# Content files are the source of truth; INDEX files are `w1mer build` artifacts.
+
+types:
+  task:
+    dir: "ROADMAP.md"           # special: single table file, one row per task
+    id: "{seq:02}"              # 01, 02, ...; children via --parent (05.1, 05.1.1)
+    index: [id, title, status, effect]
+    states: [todo, done, reviewed, issue]
+
+  review:
+    dir: "review"
+    id: "R_{roadmap}"           # derived from parent task id; "." -> "_"
+    file: "{id}.md"
+    index: [id, task, state, doc]
+    states: [pending, ok, issues]
+
+  bug:
+    dir: "bug_reason"
+    id: "B{seq:03}"
+    file: "{id}_{slug}.md"
+    index: [id, title, error, module, doc]
+    states: [open, fixed]
+
+  perf:
+    dir: "performance"
+    id: "PERF_{domain}_{seq:02}"   # domain from --domain
+    file: "{id}.md"
+    index: [id, title, domain, state, doc]
+    states: [pending, reviewing, optimizing, retesting, done, shelved]
+    # semantic order: local-only measurement domains (no paid eval runs)
+    domains: [lexer, resolve, db, ipc, snapshot, sandbox, toolpath, startup, model]
+
+  detail:
+    dir: "detail"
+    id: "{seq:02}"               # 01, 02, ...
+    file: "{id}_{slug}.md"
+    index: [id, title, state, doc]
+    states: [active, archived]
+
+# CLI default behaviors: flags pre-set for a subcommand.
+# Precedence: command line > defaults > intrinsic default.
+defaults:
+  set:
+    register_if_missing: true   # `set task` auto-registers a missing ROADMAP row
+  new:
+    section: foundation         # sections are defined by ROADMAP.md markers
+                                # (foundation/kernel/server/execution/intelligence/
+                                #  orchestration/quality/backlog)
