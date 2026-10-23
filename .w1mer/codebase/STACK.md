@@ -2,14 +2,24 @@
 
 > Stable layer, first in fixed read order. Edit rarely.
 
-- Language: Rust (edition 2024), single binary `ita`, cargo workspace
-- Build: `cargo build` / `cargo test`; async only in I/O crates (never in `ita-kernel`)
-- Test runner: `cargo nextest run -p <crate>`（零测试视为失败，已不再是空工作区）；
-  `cargo bench`（criterion）用于本地零成本基准
-- Benchmark tooling: local-only spans/benches (no paid eval runs). See `perf` archive.
+- Language: Rust, edition 2024, `rust-version = "1.85"`. Single binary `ita` from
+  `crates/ita-cli`; every other crate is a library. Async only in I/O crates —
+  never in `ita-kernel`.
+- Build: `cargo build --workspace --locked`
+- Format: `cargo fmt --all --check`
+- Lint: `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- Test: `cargo nextest run --workspace --locked` (a run with zero tests is a failure)
+- Kernel purity: `bash .w1mer/scripts/check_kernel_purity.sh` — asserts `ita-kernel` has
+  no dependencies at all (including dev), no build script, and no IO/clock/env/thread
+  usage. Runs before clippy in CI so it fails fast.
+- Benchmark: `cargo bench` (criterion), local-only. No paid eval runs — see AGENTS.md §10
+  and the `perf` archive.
 - Storage: SQLite (bundled, WAL) via `rusqlite`, single writer confined to the server
-- Sandbox: Linux first (landlock + seccomp, optional bwrap); `Policy`/`Fidelity`
-  matrix must stay cross-platform-expressible
-- Models: OpenAI + Anthropic wire formats, native tool calling only
-  (single `command` string schema), all LLM traffic proxied by the server
-- Platform note: `target/`, `.ita/`, `AGENTS.md` are ignored; `.w1mer/` is committed
+- Sandbox: Linux first (landlock + seccomp); `Policy`/`Fidelity` must stay
+  cross-platform-expressible
+- Models: OpenAI + Anthropic wire formats, native tool calling only (single `command`
+  string schema), all LLM traffic proxied by the server
+- CI: `.github/workflows/ci.yml`, three parallel jobs — `fmt`, `lint` (purity gate then
+  clippy), `test` (build then nextest). Every cargo step passes `--locked`.
+- Repo hygiene: `target/` and `.ita/` are ignored; `.w1mer/` and `AGENTS.md` are committed
+  (worktrees check out from git, so an uncommitted AGENTS.md would vanish in them)

@@ -6,7 +6,8 @@
 一切 IO、进程、沙箱与模型调用都在内核之外。这条分离不是风格偏好，而是被编译器与进程边界
 共同强制的架构约束，因此系统的每个部分都可以独立替换、独立测试、独立崩溃。
 
-当前状态：架构决策已定（见 [`docs/adr/`](docs/adr/)），代码尚未开始。开发路线见
+当前状态：架构决策已定（见 [`docs/adr/`](docs/adr/)），十一个 crate 的骨架与 CI 已落地
+（版本 0.1.7），下一步进入内核的命令文法与上下文模型。开发路线见
 [`.w1mer/ROADMAP.md`](.w1mer/ROADMAP.md)。
 
 ## 它想解决什么
@@ -81,7 +82,7 @@ bash：参数、管道、重定向、heredoc（版本一限制为单命令加单
 |---|---|
 | [`docs/adr/`](docs/adr/) | 架构决策记录：决定了什么、为什么、否决了什么、代价是什么 |
 | [`AGENTS.md`](AGENTS.md) | 开发约束：架构不变量、提交与版本规范、验证纪律 |
-| [`.w1mer/ROADMAP.md`](.w1mer/ROADMAP.md) | 大任务路线图（按段落即优先级） |
+| [`.w1mer/ROADMAP.md`](.w1mer/ROADMAP.md) | 史诗与二级任务路线图（段落顺序即优先级） |
 | [`.w1mer/codebase/`](.w1mer/codebase/) | 分层代码库文档，新加入者从 `STACK` 读起 |
 | [`.w1mer/COMMENT_GUIDELINES.md`](.w1mer/COMMENT_GUIDELINES.md) | 注释规范 |
 | [`.w1mer/DOC_GUIDELINES.md`](.w1mer/DOC_GUIDELINES.md) | 开发文档与 ADR 写作规范 |
@@ -93,7 +94,9 @@ bash：参数、管道、重定向、heredoc（版本一限制为单命令加单
 ```sh
 git clone <repo> && cd ITAgent
 .w1mer/scripts/install_hooks.sh    # 装提交信息校验与提交前格式化钩子
-w1mer list                         # 看当前该做什么
+cargo build --workspace            # 十一个 crate 一次构建
+cargo nextest run --workspace      # 跑测试（nextest 需自行安装）
+w1mer list                         # 看当前该做什么（w1mer 由 w1mer skill 安装到 PATH）
 ```
 
 日常验证三件套：`cargo nextest run -p <crate>`、`cargo build --workspace`、

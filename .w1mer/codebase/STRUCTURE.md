@@ -2,7 +2,7 @@
 
 > Stable layer, second in fixed read order. Edit rarely.
 
-## Target layout (not yet created — see ROADMAP 02)
+## Crate layout
 
 ```
 ita-kernel         pure logic: message tree, resolve(), Command AST/lexer,
@@ -20,6 +20,14 @@ ita-server         units/supervisor, router, DB+queue owner, LLM proxy, event lo
 ita-worker         workspace worker process (stateless)
 ita-cli            the `ita` binary (role dispatch: master|worker|tool-host)
 ```
+
+**Status.** All eleven crates exist as directories with their manifests and a `lib.rs`
+carrying only module documentation; `ita-cli` additionally has role dispatch and tests.
+Except for that, the responsibilities listed above are the *target* for each crate, not
+current behaviour. The kernel's first real content lands in epics 03–05. `ita-kernel` has no dependencies at all — not even
+dev-dependencies — enforced by `.w1mer/scripts/check_kernel_purity.sh` plus
+`crates/ita-kernel/clippy.toml`. `ita-cli` is the only member that produces a binary
+(`ita`); role dispatch lives in `crates/ita-cli/src/role.rs`.
 
 ## Cross-module data flow
 
