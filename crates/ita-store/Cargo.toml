@@ -7,3 +7,6 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+ita-kernel = { path = "../ita-kernel" }
+rusqlite.workspace = true
+ulid.workspace = true

@@ -15,10 +15,14 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.23"
+version = "0.1.24"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/ITStudioOUC/ITAgent"
 
 [workspace.dependencies]
+# 存储层：SQLite 用 bundled 特性编译进去，避免依赖宿主机的 sqlite3 版本。
+rusqlite = { version = "0.32", features = ["bundled"] }
+# 时间与 id：ULID 需要时间戳，内核不碰时间，所以放在存储层。
+ulid = "1"

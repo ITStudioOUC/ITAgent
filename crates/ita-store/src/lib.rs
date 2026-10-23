@@ -1,7 +1,18 @@
-//! 存储层：SQLite、内容寻址存储与快照。
+//! 存储层。
 //!
-//! 本 crate 属于内核之外的一层：它做 IO、时钟或子进程，因此不追求可复现的纯函数语义，
-//! 但必须把副作用限制在自己的边界内，不向上层泄漏。
+//! 这一层是唯一接触数据库的地方，且只由 server 进程使用。它对外暴露**操作级**接口而不是
+//! SQL：业务代码拿到的是"追加一条事件"这样的方法，而不是一个可以随手拼 `WHERE` 的连接。
+//! 这样做的理由有两条：
+//!
+//! 1. 作用域泄漏（漏写 `WHERE workspace_id`）是跨工作区污染的唯一入口，而它在操作级接口
+//!    里不可能发生——工作区是调用时传入的上下文，不是 SQL 片段。
+//! 2. 未来换 Postgres 时只需要换实现，不需要改调用方，也不需要让 SQL 方言渗进业务代码。
+//!
+//! 迁移只允许加表加列，不改不删：事件表是不可变的真相，删列会让历史无法 replay。
 
-#![forbid(unsafe_code)]
-#![deny(missing_docs)]
+pub mod db;
+pub mod migrate;
+pub mod scope;
+
+pub use db::{Store, StoreError};
+pub use scope::WorkspaceScope;
