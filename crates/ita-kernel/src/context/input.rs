@@ -62,10 +62,17 @@ pub enum InputError {
     MissingCheckpointFacts(CheckpointId),
     /// 固定层节点的内容不是固定层。
     NotFixedLayer,
-    /// 最近轮次里出现了帧或固定层节点——那说明调用方把两类东西混在了一起。
+    /// 最近轮次或当前段里出现了帧或固定层节点——那说明调用方把两类东西混在了一起。
     WrongRecentBody {
         /// 出问题的节点。
         node: NodeId,
+    },
+    /// 同一个检查点出现了多份事实。
+    DuplicateCheckpointFacts(CheckpointId),
+    /// 帧没有覆盖任何节点。
+    EmptyFrame {
+        /// 出问题的帧位置。
+        index: usize,
     },
 }
 
@@ -78,7 +85,13 @@ impl std::fmt::Display for InputError {
             }
             Self::NotFixedLayer => write!(f, "固定层节点的内容不是固定层"),
             Self::WrongRecentBody { node } => {
-                write!(f, "最近轮次里出现了不该有的节点 {node}（帧或固定层）")
+                write!(f, "最近轮次或当前段里出现了不该有的节点 {node}（帧或固定层）")
+            }
+            Self::DuplicateCheckpointFacts(id) => {
+                write!(f, "检查点 {id} 有多份事实，取值会依赖输入顺序")
+            }
+            Self::EmptyFrame { index } => {
+                write!(f, "第 {index} 个帧没有覆盖任何节点，摘要会退化成普通消息")
             }
         }
     }
@@ -113,9 +126,22 @@ impl ResolveInput {
                 return Err(InputError::MissingCheckpointFacts(checkpoint.clone()));
             }
         }
-        for node in &self.recent {
+        for node in self.recent.iter().chain(self.current.iter()) {
             if matches!(node.body, NodeBody::Frame(_) | NodeBody::FixedLayer { .. }) {
                 return Err(InputError::WrongRecentBody { node: node.id.clone() });
+            }
+        }
+        // 检查点事实不能有重复键：重复时取首条会让措辞依赖输入顺序。
+        for (index, (id, _)) in self.checkpoint_facts.iter().enumerate() {
+            if self.checkpoint_facts[..index].iter().any(|(prev, _)| prev == id) {
+                return Err(InputError::DuplicateCheckpointFacts(id.clone()));
+            }
+        }
+        // 帧必须覆盖至少一个节点：`covers` 为空的帧会退化成一条普通系统消息，它既不
+        // 参与"哪些原文已被摘要掉"的判断，也无法在 replay 时定位。
+        for (index, frame) in self.frames.iter().enumerate() {
+            if frame.covers.is_empty() {
+                return Err(InputError::EmptyFrame { index });
             }
         }
         // 任意两个帧都不能共享节点：只看相邻帧的首尾会漏掉"后一帧完全包含前一帧"这类

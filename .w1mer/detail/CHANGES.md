@@ -122,3 +122,12 @@ state: active
   `recent` 取 `Vec<Node>` 而 0018 写 `Vec<NodeId>`，注释还留着元组说法；`checkpoint_facts` 取 `Vec`
   而非映射，重复键无校验；帧重叠只比较相邻帧首尾，完全包含与非相邻重叠漏过；`preview_bytes` 是
   字节而预算余额是抽象计数，两种单位同处一个结构且无校验。
+- 批次 04.4 新增 `crates/ita-kernel/src/context/resolve.rs`，内核对外暴露 `Segment`、`MessageRole`、
+  `Message`、`Drift`、`ResolvedContext` 与 `resolve`，版本推进到 0.1.16。契约层面新增四段输出的
+  形状约定：固定层一条系统消息，每个帧一条摘要消息并在其检查点有事实时紧跟一条漂移说明，最近轮次
+  与当前段按输入顺序展开，`estimated_usage` 为正文总字节数。四条待闭合的约定：`estimated_usage`
+  是字节而 `Budget` 的上限与触发点是抽象计数，直接送入 `should_compress` 会让压缩提前到真实用量
+  的三分之一；`node_to_message` 把 `Notice` 一律标为当前段、`Turn` 与工具消息一律标为最近段，
+  段标签由节点类型决定而非所在段，按 `Segment` 数最近三轮会数错；`current` 里的帧与固定层节点
+  被静默丢弃而不报错，`recent` 有对称校验、`current` 没有；`covers` 为空的帧通过校验并退化成
+  纯摘要，`checkpoint_facts` 重复键的语义由首条命中决定而顺序未固定。

@@ -113,10 +113,12 @@ pub struct ResolvedContext {
     pub messages: Vec<Message>,
     /// 摘要与磁盘的漂移说明，按帧的顺序。
     pub drift: Vec<(CheckpointId, Drift)>,
-    /// 估算用量：正文总字节数。
+    /// 正文总字节数。
     ///
-    /// 这是抽象计数的一种实现（按字节），调用方可以换成自己的分词计数。
-    pub estimated_usage: u64,
+    /// **不要直接与 [`Budget`](super::budget::Budget) 比较**：预算用的是调用方定义的
+    /// 抽象计数（通常是分词后的 token 数），字节数与它不同量纲。把字节数当用量送入阈值
+    /// 判断会让 85% 在真实用量约三分之一时就触发。这个字段的用途是诊断与日志。
+    pub body_bytes: u64,
 }
 
 /// 解析。
@@ -160,35 +162,44 @@ pub fn resolve(input: &ResolveInput) -> Result<ResolvedContext, super::input::In
             role: MessageRole::System,
             text: frame_text(frame),
         });
-        if let Some(checkpoint) = &frame.checkpoint
-            && let Some(facts) = input.facts(checkpoint)
-        {
-            let state = Drift::from_facts(facts);
-            drift.push((checkpoint.clone(), state));
-            messages.push(Message {
+        match &frame.checkpoint {
+            Some(checkpoint) => {
+                let Some(facts) = input.facts(checkpoint) else {
+                    // 校验阶段已经保证事实存在，这里只是不让缺失悄悄变成"没有漂移"。
+                    continue;
+                };
+                let state = Drift::from_facts(facts);
+                drift.push((checkpoint.clone(), state));
+                messages.push(Message {
+                    segment: Segment::Frame,
+                    role: MessageRole::System,
+                    text: state.notice().to_owned(),
+                });
+            }
+            None => messages.push(Message {
                 segment: Segment::Frame,
                 role: MessageRole::System,
-                text: state.notice().to_owned(),
-            });
+                text: "该摘要没有对应的文件快照，无法核对文件状态。".to_owned(),
+            }),
         }
     }
 
     // 第三段：最近轮次。
     for node in &input.recent {
-        if let Some(message) = node_to_message(node) {
+        if let Some(message) = node_to_message(node, Segment::Recent) {
             messages.push(message);
         }
     }
 
     // 第四段：当前待办与通知。
     for node in &input.current {
-        if let Some(message) = node_to_message(node) {
+        if let Some(message) = node_to_message(node, Segment::Current) {
             messages.push(message);
         }
     }
 
-    let estimated_usage = messages.iter().map(|m| m.text.len() as u64).sum();
-    Ok(ResolvedContext { messages, drift, estimated_usage })
+    let body_bytes = messages.iter().map(|m| m.text.len() as u64).sum();
+    Ok(ResolvedContext { messages, drift, body_bytes })
 }
 
 /// 帧的正文：摘要加上它覆盖的范围说明。
@@ -200,42 +211,40 @@ fn frame_text(frame: &Frame) -> String {
     }
 }
 
-/// 把一个节点转成消息。帧与固定层不在这里出现（它们有各自的段）。
-fn node_to_message(node: &super::node::Node) -> Option<Message> {
-    match &node.body {
-        NodeBody::FixedLayer { .. } | NodeBody::Frame(_) => None,
-        NodeBody::Turn { role, text } => Some(Message {
-            segment: Segment::Recent,
-            role: match role {
+/// 把一个节点转成消息。
+///
+/// # 边界与前提
+/// `segment` 由调用方给出（节点位于哪一段），不由节点类型推断：同一种 `Notice` 可能
+/// 出现在最近轮次里（几轮前的"文件已更新"），也可能出现在当前段（刚刚发生的）。按类型
+/// 推断会让段标签与实际位置不一致，而按段数"最近三轮"的逻辑会因此数错。
+///
+/// # 副作用
+/// 无。
+fn node_to_message(node: &super::node::Node, segment: Segment) -> Option<Message> {
+    let (role, text) = match &node.body {
+        // 帧与固定层有各自的段；输入校验已排除它们出现在 recent/current。
+        NodeBody::FixedLayer { .. } | NodeBody::Frame(_) => return None,
+        NodeBody::Turn { role, text } => (
+            match role {
                 TurnRole::User => MessageRole::User,
                 TurnRole::Assistant => MessageRole::Assistant,
             },
-            text: text.clone(),
-        }),
-        NodeBody::ToolCall { command } => Some(Message {
-            segment: Segment::Recent,
-            role: MessageRole::ToolCall,
-            text: command.clone(),
-        }),
-        NodeBody::ToolResult { preview, exit_code, .. } => Some(Message {
-            segment: Segment::Recent,
-            role: MessageRole::ToolResult,
-            text: format!("[退出码 {exit_code}] {preview}"),
-        }),
-        NodeBody::Notice { text } => Some(Message {
-            segment: Segment::Current,
-            role: MessageRole::System,
-            text: text.clone(),
-        }),
-        NodeBody::Todo { items } => Some(Message {
-            segment: Segment::Current,
-            role: MessageRole::System,
-            text: format!(
+            text.clone(),
+        ),
+        NodeBody::ToolCall { command } => (MessageRole::ToolCall, command.clone()),
+        NodeBody::ToolResult { preview, exit_code, .. } => {
+            (MessageRole::ToolResult, format!("[退出码 {exit_code}] {preview}"))
+        }
+        NodeBody::Notice { text } => (MessageRole::System, text.clone()),
+        NodeBody::Todo { items } => (
+            MessageRole::System,
+            format!(
                 "当前待办：\n{}",
                 items.iter().map(|i| format!("- {i}")).collect::<Vec<_>>().join("\n")
             ),
-        }),
-    }
+        ),
+    };
+    Some(Message { segment, role, text })
 }
 
 #[cfg(test)]
@@ -309,7 +318,9 @@ mod tests {
         assert_eq!(
             segments,
             vec![
+                // 帧没有检查点时额外跟一条"无快照可核对"的说明，因此 Frame 段占两条。
                 Segment::Fixed,
+                Segment::Frame,
                 Segment::Frame,
                 Segment::Recent,
                 Segment::Recent,
@@ -425,10 +436,49 @@ mod tests {
     }
 
     #[test]
-    fn 用量是正文总字节数() {
+    fn 字节数是正文总长度且不与预算混用() {
         let resolved = resolve(&base_input()).expect("应当成功");
         let manual: u64 = resolved.messages.iter().map(|m| m.text.len() as u64).sum();
-        assert_eq!(resolved.estimated_usage, manual);
+        assert_eq!(resolved.body_bytes, manual);
+        // 字节数与预算不是同一量纲：默认预算的触发点是 170000 个抽象计数，而这里的字节数
+        // 只有几十，直接比较会得出"远未触发"的结论，反之亦然。此处只断言字段存在且可读。
+        assert!(resolved.body_bytes < 1024);
+    }
+
+    #[test]
+    fn 帧没有检查点时明确说明无法核对() {
+        let mut input = base_input();
+        input.frames.push(Frame {
+            summary: "做了 A".to_owned(),
+            covers: vec![id(3)],
+            checkpoint: None,
+            fixed_layer_fingerprint: "fp".to_owned(),
+        });
+        let resolved = resolve(&input).expect("应当成功");
+        assert!(resolved.messages[2].text.contains("没有对应的文件快照"));
+        assert!(resolved.drift.is_empty(), "无检查点的帧不产生漂移记录");
+    }
+
+    #[test]
+    fn 空覆盖的帧被拒() {
+        let mut input = base_input();
+        input.frames.push(Frame {
+            summary: "空".to_owned(),
+            covers: vec![],
+            checkpoint: None,
+            fixed_layer_fingerprint: "fp".to_owned(),
+        });
+        assert!(resolve(&input).is_err());
+    }
+
+    #[test]
+    fn 最近段里的通知保持最近段标签() {
+        let mut input = base_input();
+        input.recent.push(node(6, NodeBody::Notice { text: "几轮前文件被改过".to_owned() }));
+        let resolved = resolve(&input).expect("应当成功");
+        let notice =
+            resolved.messages.iter().find(|m| m.text.contains("几轮前")).expect("应当有这条通知");
+        assert_eq!(notice.segment, Segment::Recent, "段标签应由所在位置决定");
     }
 
     #[test]
