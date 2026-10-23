@@ -27,13 +27,30 @@ pub struct FoldPlan {
 /// 无法计算折叠范围的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FoldError {
-    /// 轮次不足：没有可压缩的部分。
+    /// 轮次不足：历史里没有足够多的轮次可以保留。
     NotEnoughTurns {
         /// 实际找到的轮数。
         found: u32,
         /// 需要保留的轮数。
         keep: u32,
     },
+    /// 轮数够，但保留段已经延伸到历史开头，没有可压缩的部分。
+    NothingToFold {
+        /// 实际找到的轮数。
+        turns: u32,
+        /// 保留的轮数。
+        keep: u32,
+    },
+}
+
+/// 该节点是否固定保留、不参与折叠。
+///
+/// 固定层在压缩时重建，待办必须原样保留；两者都不属于"可以被摘要掉的历史"。
+fn is_pinned(node: &Node) -> bool {
+    matches!(
+        node.body,
+        super::super::node::NodeBody::FixedLayer { .. } | super::super::node::NodeBody::Todo { .. }
+    )
 }
 
 impl std::fmt::Display for FoldError {
@@ -41,6 +58,9 @@ impl std::fmt::Display for FoldError {
         match self {
             Self::NotEnoughTurns { found, keep } => {
                 write!(f, "只有 {found} 轮，不足以在保留 {keep} 轮之外再压缩")
+            }
+            Self::NothingToFold { turns, keep } => {
+                write!(f, "共 {turns} 轮、保留 {keep} 轮时保留段已到历史开头，没有可压缩的部分")
             }
         }
     }
@@ -51,7 +71,7 @@ impl std::error::Error for FoldError {}
 /// 计算折叠范围。
 ///
 /// # 步骤
-/// 1. 从新到旧找出每一轮的起点（助手消息）。
+/// 1. 从新到旧找出每一轮的起点（用户消息）。
 /// 2. 保留最近 `keep` 轮，找到保留部分的第一个节点。
 /// 3. 该节点之前的全部节点归入覆盖范围。
 ///
@@ -91,13 +111,23 @@ pub fn plan(history: &[Node], keep: u32) -> Result<FoldPlan, FoldError> {
     // 保留最近 keep 轮的起点：从末尾往前数第 keep 个。
     let keep_from = turn_starts[turn_starts.len() - keep as usize];
 
-    // 起点之前必须还有内容，否则"压缩"是空操作，调用方应当知道。
+    // 轮数够但保留段一直延伸到开头，说明没有可压缩的部分。这与"轮数不足"是两件事：
+    // 前者是"已经压无可压"，后者是"历史太短"，调用方的反应不同（前者可以继续用，后者
+    // 说明配置有问题）。
     if keep_from == 0 {
-        return Err(FoldError::NotEnoughTurns { found, keep });
+        return Err(FoldError::NothingToFold { turns: found, keep });
     }
 
-    let covered = history[..keep_from].iter().map(|n| n.id.clone()).collect();
-    let kept = history[keep_from..].iter().map(|n| n.id.clone()).collect();
+    // 固定层与待办不参与折叠：前者在压缩时重建（0018 第三节），后者必须原样保留
+    // （0004：压缩后仍要有当前待办）。把它们留在 `kept` 里，位置由调用方按四段结构排。
+    let covered =
+        history[..keep_from].iter().filter(|node| !is_pinned(node)).map(|n| n.id.clone()).collect();
+    let kept = history[..keep_from]
+        .iter()
+        .filter(|node| is_pinned(node))
+        .map(|n| n.id.clone())
+        .chain(history[keep_from..].iter().map(|n| n.id.clone()))
+        .collect();
     Ok(FoldPlan { covered, kept })
 }
 
@@ -181,10 +211,11 @@ mod tests {
     }
 
     #[test]
-    fn 轮数恰好等于保留数时拒绝() {
+    fn 轮数恰好等于保留数时报无可压缩() {
         let history = four_turns();
         let err = plan(&history, 4).expect_err("应当被拒");
-        assert_eq!(err, FoldError::NotEnoughTurns { found: 4, keep: 4 });
+        // 与"轮数不足"分开：这里是"已经压无可压"，不是"历史太短"。
+        assert_eq!(err, FoldError::NothingToFold { turns: 4, keep: 4 });
     }
 
     #[test]
@@ -213,14 +244,41 @@ mod tests {
     }
 
     #[test]
+    fn 固定层与待办不参与折叠() {
+        let mut history = four_turns();
+        let fixed = Node {
+            id: id(90),
+            parent: None,
+            session: session(),
+            body: NodeBody::FixedLayer {
+                fingerprint: "fp".to_owned(), content: "系统".to_owned()
+            },
+        };
+        let todo = Node {
+            id: id(91),
+            parent: None,
+            session: session(),
+            body: NodeBody::Todo { items: vec!["写测试".to_owned()] },
+        };
+        history.insert(0, fixed.clone());
+        history.push(todo.clone());
+
+        let plan = plan(&history, 3).expect("应当可以折叠");
+        assert!(!plan.covered.contains(&fixed.id), "固定层不应被摘要掉");
+        assert!(plan.kept.contains(&fixed.id), "固定层应留在保留侧");
+        assert!(plan.kept.contains(&todo.id), "待办必须原样保留");
+        assert!(!plan.covered.contains(&todo.id));
+    }
+
+    #[test]
     fn 工具节点不开启新轮() {
         // 一轮里塞十个工具节点，仍然只算一轮。
         let mut history = vec![user(1), assistant(2)];
         for n in 3..=9 {
             history.push(tool(n));
         }
-        history.push(user(0));
-        history.push(assistant(0));
+        history.push(user(20));
+        history.push(assistant(21));
         // 两轮、保留一轮：覆盖范围包含第一轮的全部十一个节点。
         let plan = plan(&history, 1).expect("应当可以折叠");
         assert_eq!(plan.covered.len(), 9, "第一轮的十一个节点里九个被覆盖");

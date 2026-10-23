@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-23T22:49:53Z",
+  "updated": "2026-10-23T22:53:07Z",
   "current": "05.3",
   "tasks": {
     "01": {
@@ -484,8 +484,8 @@
       "end": null,
       "roles": {
         "reviewer": {
-          "joined": false,
-          "at": null
+          "joined": true,
+          "at": "2026-10-23T22:53:07Z"
         },
         "implementer": {
           "joined": true,

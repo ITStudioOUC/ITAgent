@@ -150,16 +150,19 @@ impl Node {
         matches!(self.body, NodeBody::FixedLayer { .. })
     }
 
-    /// 这个节点是否属于"最近三轮"意义上的对话轮次。
+    /// 这个节点是否开启新的一轮。
     ///
     /// # 边界与前提
-    /// 只有助手消息开启新的一轮；用户输入、工具调用与结果都属于当前这一轮。压缩时按
-    /// 这个边界数三轮，不能按节点数数——一轮里可能有很多节点。
+    /// 只有用户消息开启新的一轮；助手回复、工具调用与结果都属于当前这一轮。压缩时按这个
+    /// 边界数轮，不能按节点数数——一轮里可能有很多节点。
+    ///
+    /// 边界选用户消息而不是助手消息，是因为保留段必须以"用户要求做什么"开头；若以助手
+    /// 消息为界，保留段会从回答开始，对应的提问被压进摘要。
     ///
     /// # 副作用
     /// 无。
     pub fn opens_turn(&self) -> bool {
-        matches!(self.body, NodeBody::Turn { role: TurnRole::Assistant, .. })
+        matches!(self.body, NodeBody::Turn { role: TurnRole::User, .. })
     }
 }
 
@@ -229,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn 只有助手消息开启新的一轮() {
+    fn 只有用户消息开启新的一轮() {
         let assistant = Node {
             id: id(1),
             parent: None,
@@ -248,8 +251,8 @@ mod tests {
             session: session(),
             body: NodeBody::ToolCall { command: "ita edit a.rs".to_owned() },
         };
-        assert!(assistant.opens_turn());
-        assert!(!user.opens_turn());
+        assert!(user.opens_turn());
+        assert!(!assistant.opens_turn());
         assert!(!tool.opens_turn());
     }
 
