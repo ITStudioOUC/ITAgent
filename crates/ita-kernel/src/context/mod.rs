@@ -8,6 +8,7 @@
 //! 无法共用同一套语义，replay 也会失真。
 
 pub mod budget;
+pub mod compress;
 pub mod ids;
 pub mod input;
 pub mod node;
