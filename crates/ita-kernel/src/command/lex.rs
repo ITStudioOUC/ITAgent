@@ -48,8 +48,11 @@ pub struct Token {
 /// 无。
 ///
 /// # 注意事项
-/// 反引号与 `$(` 在任何位置都拒绝，包括双引号内——命令替换会绕过权限预检，而双引号
-/// 在真实 shell 里同样会执行替换，保留它就等于留下一条静默的绕过路径。
+/// 反引号与 `$(` 在未加引号与双引号内都拒绝，因为真实 shell 在这两处会执行替换；单引号内
+/// 不执行替换，因此按字面保留，不做特殊处理。
+///
+/// 双引号内只解释 bash 也会解释的四个转义（`\"` `\\` `\$` `` \` ``），其余反斜杠组合
+/// 按字面保留两个字符。这样同一条命令在 ita 里与在真实 shell 里写出的字节一致。
 pub fn scan(input: &str) -> Result<Vec<Token>, ParseError> {
     let bytes = input.as_bytes();
     let mut tokens = Vec::new();
@@ -157,10 +160,39 @@ fn scan_word(input: &str, start: usize) -> Result<(String, usize), ParseError> {
     while i < bytes.len() {
         let b = bytes[i];
         match b {
-            b' ' | b'\t' | b'\n' | b'\r' => break,
+            b' ' | b'\t' | b'\n' => break,
+            // 回车只在 CRLF 处结束；词中间的回车按普通字符保留，与真实 shell 一致。
+            b'\r' if bytes.get(i + 1) == Some(&b'\n') => break,
             // 算符在词中间同样终止这个词：`a>b` 是两个记号加一个词。
             b'>' | b'<' | b'|' | b';' | b'&' | b'`' => break,
-            b'*' | b'?' => return Err(ParseError::GlobNotAllowed { offset: i, ch: b as char }),
+            b'*' | b'?' | b'[' => {
+                return Err(ParseError::GlobNotAllowed { offset: i, ch: b as char });
+            }
+            b'{' | b'}' => {
+                return Err(ParseError::UnsupportedOperator {
+                    offset: i,
+                    text: (b as char).to_string(),
+                    reason: "大括号展开会让目标路径在执行前不可知",
+                });
+            }
+            b'~' if i == start => {
+                return Err(ParseError::UnsupportedOperator {
+                    offset: i,
+                    text: "~".to_owned(),
+                    reason: "波浪线展开会让目标路径在执行前不可知",
+                });
+            }
+            b'$' => {
+                return Err(ParseError::UnsupportedOperator {
+                    offset: i,
+                    text: if bytes.get(i + 1) == Some(&b'(') {
+                        "$(".to_owned()
+                    } else {
+                        "$".to_owned()
+                    },
+                    reason: "变量与命令替换都会让目标路径在执行前不可知",
+                });
+            }
             b'$' if bytes.get(i + 1) == Some(&b'(') => {
                 return Err(ParseError::UnsupportedOperator {
                     offset: i,
@@ -210,15 +242,24 @@ fn scan_word(input: &str, start: usize) -> Result<(String, usize), ParseError> {
                                 reason: "命令替换会绕过权限预检",
                             });
                         }
+                        b'$' => {
+                            return Err(ParseError::UnsupportedOperator {
+                                offset: i,
+                                text: "$".to_owned(),
+                                reason: "变量展开会让目标路径在执行前不可知",
+                            });
+                        }
                         b'\\' if i + 1 < bytes.len() => {
+                            // 只解释 bash 在双引号里也会解释的四个字符；其余保持字面两个字符，
+                            // 否则同一条命令在 ita 与真实 shell 里会写出不同的字节。
                             let escaped = input[i + 1..].chars().next().expect("范围已检查");
-                            match escaped {
-                                'n' => out.push('\n'),
-                                't' => out.push('\t'),
-                                'r' => out.push('\r'),
-                                other => out.push(other),
+                            if matches!(escaped, '"' | '\\' | '$' | '`') {
+                                out.push(escaped);
+                                i += 1 + escaped.len_utf8();
+                            } else {
+                                out.push('\\');
+                                i += 1;
                             }
-                            i += 1 + escaped.len_utf8();
                         }
                         _ => {
                             let ch = input[i..].chars().next().expect("范围已检查");
@@ -289,13 +330,73 @@ mod tests {
     }
 
     #[test]
-    fn 双引号内的转义被解释() {
+    fn 双引号内只解释_bash_也解释的四个转义() {
+        // `\n` 在 bash 的双引号里是字面两个字符，这里必须保持一致，否则同一条命令在两边
+        // 会写出不同的字节，"可粘贴复现"就不成立。
         assert_eq!(
             kinds("ita echo \"a\\nb\""),
             vec![
                 TokenKind::Word("ita".to_owned()),
                 TokenKind::Word("echo".to_owned()),
-                TokenKind::Word("a\nb".to_owned()),
+                TokenKind::Word("a\\nb".to_owned()),
+            ]
+        );
+        // 引号与反斜杠本身仍然被转义。
+        assert_eq!(
+            kinds("ita echo \"a\\\"b\\\"c\""),
+            vec![
+                TokenKind::Word("ita".to_owned()),
+                TokenKind::Word("echo".to_owned()),
+                TokenKind::Word("a\"b\"c".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn 变量与括号展开被拒() {
+        for input in ["ita edit $HOME/a", "ita edit {a,b}.rs", "ita edit ~/a"] {
+            assert!(scan(input).is_err(), "{input} 应当被拒");
+        }
+    }
+
+    #[test]
+    fn 方括号按通配符拒绝() {
+        let err = scan("ita edit [ab].rs").expect_err("应当被拒");
+        assert!(matches!(err, ParseError::GlobNotAllowed { .. }));
+    }
+
+    #[test]
+    fn 空参数保留为零长词() {
+        assert_eq!(
+            kinds("ita echo \"\""),
+            vec![
+                TokenKind::Word("ita".to_owned()),
+                TokenKind::Word("echo".to_owned()),
+                TokenKind::Word(String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn utf8_参数按字符边界切分() {
+        assert_eq!(
+            kinds("ita echo 中文"),
+            vec![
+                TokenKind::Word("ita".to_owned()),
+                TokenKind::Word("echo".to_owned()),
+                TokenKind::Word("中文".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn 词中间的回车按普通字符保留() {
+        assert_eq!(
+            kinds("ita echo a\rb"),
+            vec![
+                TokenKind::Word("ita".to_owned()),
+                TokenKind::Word("echo".to_owned()),
+                TokenKind::Word("a\rb".to_owned()),
             ]
         );
     }
