@@ -46,7 +46,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 <!-- w1mer:task:foundation -->
 | 01 | 设计决策固化：docs/adr 架构决策记录全套 | — | done | 0 | 十三份架构决策记录落在 docs/adr，覆盖内核边界、单库单写者、上下文树与解析、压缩、两层回滚、内容寻址快照、受限文法、原生工具调用、租约分层、沙箱保真度、工作流事件溯源、工具信任链、unit 监督；README 已按决策重写 |
 | 01.1 | 审查架构决策记录的内部一致性与可执行性 | — | done | 0 | 六条决策矛盾全部由新 ADR 0014 至 0018 关闭，探针字段与参数表补齐，README 与不变量表同步修订 |
-| 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | active | 0 |
+| 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | done | 0 | 七个批次完成：工作区、纯净门、CI 三门、两层空壳、单二进制分发、文档对齐；版本由 0.1.0 推进至 0.1.7 |
 | 02.1 | 根清单与内核空壳 | .w1mer/detail/01_plan-02.md | done | 0 | 工作区单成员、内核零依赖、版本 0.1.0 由 workspace.package 唯一来源；review 判 ok，纯净门的可执行方案已实测并归档 |
 | 02.2 | 内核纯净门与依赖断言 | .w1mer/detail/01_plan-02.md | done | 0 | 纯净门落地：crate 内 clippy 配置 83 行、内核两条 deny、脚本断言零普通依赖且无 build.rs；注入 Instant::now 实测 clippy 退出 101、脚本退出 1，还原后通过；版本 0.1.1 |
 | 02.2.1 | 补审纯净门并核对 CI 方案 | — | done | 0 | 四处缺口关闭：dev 依赖与构建脚本不再有豁免通道，补八个 std 入口，注释改为与实测一致；三项验证与纯净门全绿 |
@@ -54,7 +54,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | 02.4 | 基础层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | done | 0 | 四个基础层 crate 空壳落地且互不依赖，内核依赖仍为空；审查抓出三处将导致返工的缺陷（forbid 挡 FFI、版本推进只刷一条锁记录、纯净门检查越界）并已修复，版本 0.1.4 |
 | 02.5 | 上层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | done | 0 | 九个成员齐备，server 依赖 store/proto/model/workflow，内核仍是零依赖；版本 0.1.5 |
 | 02.6 | 单二进制角色分发与 worker 空壳 | .w1mer/detail/01_plan-02.md | done | 0 | ita 二进制可按角色分发，版本来自清单，三个角色占位退出 0、未知角色退出 2；九项测试全绿，CI 的空测试集豁免已按标注删除；版本 0.1.6 |
-| 02.7 | 收口：文档同步与骨架验收 | .w1mer/detail/01_plan-02.md | todo | 0 | |
+| 02.7 | 收口：文档同步与骨架验收 | .w1mer/detail/01_plan-02.md | done | 0 | 十一个 crate 与目录一一对应，STACK 的五条命令与 CI 逐条一致且都带锁，STRUCTURE 增加状态段区分目标与现状；版本 0.1.7，骨架史诗完成 |
 
 
 
