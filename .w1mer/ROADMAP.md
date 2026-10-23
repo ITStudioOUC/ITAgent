@@ -88,7 +88,7 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 | 03.4 | 语法装配：单命令与重定向 | .w1mer/detail/02_plan-03.md | done | 0 | 语法装配落地：命令名、参数、三种重定向、单个 heredoc；结构约束（两个 heredoc、与输入重定向同现、空目标、记号上限）全部前移到装配前检查；75 项测试全绿，版本 0.1.11 |
 | 03.5 | 失败矩阵总表与诊断 | .w1mer/detail/02_plan-03.md | done | 0 | 失败矩阵在公共入口上跑 33 条拒绝用例与 15 条合法对照，覆盖十类失败与全部越界构造；每条拒绝都断言错误类别、可操作关键词、不可重试、带偏移；版本 0.1.12 |
 | 04 | 上下文模型：Node/Frame/resolve/三态 notice/读集 | — | active | 0 |
-| 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/03_plan-04.md | done | 0 | 四类名义标识符与节点、帧、内容句柄定型；补上消息方向、轮次边界、工具调用与结果分离、待办变体、跨会话父边语义；96 项测试全绿，版本 0.1.13 |
 | 04.2 | 上下文树：head、分叉与 CAS | .w1mer/detail/03_plan-04.md | todo | 0 | |
 | 04.3 | ResolveInput 与预算结构 | .w1mer/detail/03_plan-04.md | todo | 0 | |
 | 04.4 | 四段解析与逐字节复现 | .w1mer/detail/03_plan-04.md | todo | 0 | |
