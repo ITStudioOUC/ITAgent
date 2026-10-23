@@ -95,7 +95,7 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 | 04.5 | 漂移四组合通知 | .w1mer/detail/03_plan-04.md | done | 0 | 并入 04.4：Drift 的四组合与四种措辞已随解析落地，含不可达格不报方向与四种措辞互异的用例 |
 | 04.6 | 读集记录与陈旧写判定 | .w1mer/detail/03_plan-04.md | done | 0 | 读集落地：按工作区、路径键、会话三层建模，纯字符串归一化，乱序记录不覆盖，能只把通知发给视图过期的会话；160 项测试全绿，版本 0.1.17 |
 | 05 | 语义压缩：事务性切换 + 保留 3 轮 + 事实层 | — | active | 0 |
-| 05.1 | 压缩输出格式与解析 | .w1mer/detail/04_plan-05.md | todo | 0 | |
+| 05.1 | 压缩输出格式与解析 | .w1mer/detail/04_plan-05.md | done | 0 | 压缩输出契约落地：散文段与结束标记严格校验，事实层不接收模型输入，截断/超长与随机性错误分成两类重试判据；174 项测试全绿，版本 0.1.18 |
 | 05.2 | 触发阈值与预留预算 | .w1mer/detail/04_plan-05.md | todo | 0 | |
 | 05.3 | 轮边界与折叠范围 | .w1mer/detail/04_plan-05.md | todo | 0 | |
 | 05.4 | 保留轮次工具正文瘦身 | .w1mer/detail/04_plan-05.md | todo | 0 | |
