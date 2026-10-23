@@ -46,7 +46,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 <!-- w1mer:task:foundation -->
 | 01 | 设计决策固化：docs/adr 架构决策记录全套 | — | done | 0 | 十三份架构决策记录落在 docs/adr，覆盖内核边界、单库单写者、上下文树与解析、压缩、两层回滚、内容寻址快照、受限文法、原生工具调用、租约分层、沙箱保真度、工作流事件溯源、工具信任链、unit 监督；README 已按决策重写 |
 | 01.1 | 审查架构决策记录的内部一致性与可执行性 | — | done | 0 | 六条决策矛盾全部由新 ADR 0014 至 0018 关闭，探针字段与参数表补齐，README 与不变量表同步修订 |
-| 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | todo | 0 |
+| 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | active | 0 |
 | 02.1 | 根清单与内核空壳 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.2 | 内核纯净门与依赖断言 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.3 | CI 流水线五项门 | .w1mer/detail/01_plan-02.md | todo | 0 | |
@@ -79,20 +79,20 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:kernel -->
-| 03 | 受限 bash 文法：Command AST + lexer + heredoc + 失败矩阵 | — | todo | 0 |
+| 03 | 受限 bash 文法：Command AST + lexer + heredoc + 失败矩阵 | — | active | 0 |
 | 03.1 | Command AST 类型与目标提取 | .w1mer/detail/01_plan-03.md | todo | 0 | |
 | 03.2 | 词法扫描：词、引号与算符 | .w1mer/detail/01_plan-03.md | todo | 0 | |
 | 03.3 | heredoc 状态机与十项失败 | .w1mer/detail/01_plan-03.md | todo | 0 | |
 | 03.4 | 语法装配：单命令与重定向 | .w1mer/detail/01_plan-03.md | todo | 0 | |
 | 03.5 | 失败矩阵总表与诊断 | .w1mer/detail/01_plan-03.md | todo | 0 | |
-| 04 | 上下文模型：Node/Frame/resolve/三态 notice/读集 | — | todo | 0 |
+| 04 | 上下文模型：Node/Frame/resolve/三态 notice/读集 | — | active | 0 |
 | 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/01_plan-04.md | todo | 0 | |
 | 04.2 | 上下文树：head、分叉与 CAS | .w1mer/detail/01_plan-04.md | todo | 0 | |
 | 04.3 | ResolveInput 与预算结构 | .w1mer/detail/01_plan-04.md | todo | 0 | |
 | 04.4 | 四段解析与逐字节复现 | .w1mer/detail/01_plan-04.md | todo | 0 | |
 | 04.5 | 漂移四组合通知 | .w1mer/detail/01_plan-04.md | todo | 0 | |
 | 04.6 | 读集记录与陈旧写判定 | .w1mer/detail/01_plan-04.md | todo | 0 | |
-| 05 | 语义压缩：事务性切换 + 保留 3 轮 + 事实层 | — | todo | 0 |
+| 05 | 语义压缩：事务性切换 + 保留 3 轮 + 事实层 | — | active | 0 |
 | 05.1 | 压缩输出格式与解析 | .w1mer/detail/01_plan-05.md | todo | 0 | |
 | 05.2 | 触发阈值与预留预算 | .w1mer/detail/01_plan-05.md | todo | 0 | |
 | 05.3 | 轮边界与折叠范围 | .w1mer/detail/01_plan-05.md | todo | 0 | |
@@ -132,7 +132,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:server -->
-| 06 | 存储层：单 DB schema + CAS + 快照 squash + GC | — | todo | 0 |
+| 06 | 存储层：单 DB schema + CAS + 快照 squash + GC | — | active | 0 |
 | 06.1 | 存储打开、作用域与迁移运行器 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.2 | 初始 schema：核心表与快照表 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.3 | 事件追加、seq 分配与预览截断 | .w1mer/detail/05_plan-06.md | todo | 0 | |
@@ -142,12 +142,12 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 06.7 | 基线加增量 squash 与重定基线 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.8 | 回滚对齐：写回、删除与残留清单 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.9 | 标记清除 GC：快照根、租约根与宽限期 | .w1mer/detail/05_plan-06.md | todo | 0 | |
-| 07 | unit 监督者：依赖拓扑 + ready 定义 + 渐进加载 | — | todo | 0 |
+| 07 | unit 监督者：依赖拓扑 + ready 定义 + 渐进加载 | — | active | 0 |
 | 07.1 | 拓扑类型与依赖无环校验 | .w1mer/detail/06_plan-07.md | todo | 0 | |
 | 07.2 | 状态机、就绪探针与停止顺序 | .w1mer/detail/06_plan-07.md | todo | 0 | |
 | 07.3 | 必需与非必需启动门与降级 | .w1mer/detail/06_plan-07.md | todo | 0 | |
 | 07.4 | 能力集快照与变更推送 | .w1mer/detail/06_plan-07.md | todo | 0 | |
-| 08 | server 写路径与 IPC：Invocation 信封 + 两类消息 + group commit | — | todo | 0 |
+| 08 | server 写路径与 IPC：Invocation 信封 + 两类消息 + group commit | — | active | 0 |
 | 08.1 | Invocation 信封与版本协商 | .w1mer/detail/07_plan-08.md | todo | 0 | |
 | 08.2 | 本地 socket 与连接级工作区绑定 | .w1mer/detail/07_plan-08.md | todo | 0 | |
 | 08.3 | 权威与遥测分流、有界队列与背压 | .w1mer/detail/07_plan-08.md | todo | 0 | |
@@ -190,7 +190,7 @@ outer lease and never acquire new paths.
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:execution -->
-| 09 | 执行器：单次租约 + 多路径原子获取 + 取消传播 | — | todo | 0 |
+| 09 | 执行器：单次租约 + 多路径原子获取 + 取消传播 | — | active | 0 |
 | 09.1 | 租约类型与资源键归一 | .w1mer/detail/08_plan-09.md | todo | 0 | |
 | 09.2 | 多路径原子获取与 TTL 落库 | .w1mer/detail/08_plan-09.md | todo | 0 | |
 | 09.3 | 租约 RPC 与执行器客户端 | .w1mer/detail/08_plan-09.md | todo | 0 | |
@@ -202,7 +202,7 @@ outer lease and never acquire new paths.
 | 09.9 | 回收后快照与实际写入差集 | .w1mer/detail/08_plan-09.md | todo | 0 | |
 | 09.10 | 嵌套调用继承外层租约 | .w1mer/detail/08_plan-09.md | todo | 0 | |
 | 09.11 | 声明越界审计与严格模式 | .w1mer/detail/08_plan-09.md | todo | 0 | |
-| 10 | Linux 沙箱：landlock/seccomp + Policy/Fidelity 能力矩阵 | — | todo | 0 |
+| 10 | Linux 沙箱：landlock/seccomp + Policy/Fidelity 能力矩阵 | — | active | 0 |
 | 10.1 | Policy 与 Fidelity 内核模型 | .w1mer/detail/09_plan-10.md | todo | 0 | |
 | 10.2 | 策略交集与来源标注 | .w1mer/detail/09_plan-10.md | todo | 0 | |
 | 10.3 | 策略拒绝与租约拒绝分型 | .w1mer/detail/09_plan-10.md | todo | 0 | |
@@ -215,7 +215,7 @@ outer lease and never acquire new paths.
 | 10.10 | 环境清洗与资源上限 | .w1mer/detail/09_plan-10.md | todo | 0 | |
 | 10.11 | 沙箱监督进程与失败语义 | .w1mer/detail/09_plan-10.md | todo | 0 | |
 | 10.12 | Linux 逃逸负向测试 | .w1mer/detail/09_plan-10.md | todo | 0 | |
-| 11 | 工具系统：manifest + shim ABI + 包管理器 + 首次批准 | — | todo | 0 |
+| 11 | 工具系统：manifest + shim ABI + 包管理器 + 首次批准 | — | active | 0 |
 | 11.1 | 清单 schema 与解析 | .w1mer/detail/10_plan-11.md | todo | 0 | |
 | 11.2 | 清单规范哈希与平台绑定 | .w1mer/detail/10_plan-11.md | todo | 0 | |
 | 11.3 | Shim ABI 版本化编解码 | .w1mer/detail/10_plan-11.md | todo | 0 | |
@@ -280,7 +280,7 @@ outer lease and never acquire new paths.
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:intelligence -->
-| 12 | 模型层：双 provider 适配 + native codec + usage 账本 + server 代理 | — | todo | 0 |
+| 12 | 模型层：双 provider 适配 + native codec + usage 账本 + server 代理 | — | active | 0 |
 | 12.1 | 归一化消息与工具定义类型 | .w1mer/detail/11_plan-12.md | todo | 0 | |
 | 12.2 | Anthropic 非流式编解码 | .w1mer/detail/11_plan-12.md | todo | 0 | |
 | 12.3 | OpenAI 非流式编解码 | .w1mer/detail/11_plan-12.md | todo | 0 | |
@@ -290,7 +290,7 @@ outer lease and never acquire new paths.
 | 12.7 | server 模型代理与非流式转发 | .w1mer/detail/11_plan-12.md | todo | 0 | |
 | 12.8 | 流式经 IPC 转发与取消传播 | .w1mer/detail/11_plan-12.md | todo | 0 | |
 | 12.9 | 单工具调用回合状态机 | .w1mer/detail/11_plan-12.md | todo | 0 | |
-| 13 | 工具检索（可选）：BM25→rerank→selector + 反馈落库 | — | todo | 0 |
+| 13 | 工具检索（可选）：BM25→rerank→selector + 反馈落库 | — | active | 0 |
 | 13.1 | 检索开关与工具目录索引 | .w1mer/detail/12_plan-13.md | todo | 0 | |
 | 13.2 | BM25 打分与 top-k 提示消息 | .w1mer/detail/12_plan-13.md | todo | 0 | |
 | 13.3 | 检索结果冻结进事件日志 | .w1mer/detail/12_plan-13.md | todo | 0 | |
@@ -330,7 +330,7 @@ DSL is optional for v1, but subagent semantics must be reserved in the kernel no
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:orchestration -->
-| 14 | 工作流 DSL：JSON schema + 事件溯源状态 + 静态冲突 lint | — | todo | 0 |
+| 14 | 工作流 DSL：JSON schema + 事件溯源状态 + 静态冲突 lint | — | active | 0 |
 | 14.1 | 工作流 JSON 类型与拒未知字段 | .w1mer/detail/13_plan-14.md | todo | 0 | |
 | 14.2 | 资源键归一与粒度冲突 | .w1mer/detail/13_plan-14.md | todo | 0 | |
 | 14.3 | 依赖环与读写悬挂的载入期拒绝 | .w1mer/detail/13_plan-14.md | todo | 0 | |
@@ -339,7 +339,7 @@ DSL is optional for v1, but subagent semantics must be reserved in the kernel no
 | 14.6 | 完成记录的事务提交与幂等去重 | .w1mer/detail/13_plan-14.md | todo | 0 | |
 | 14.7 | 信号仅作唤醒且可丢失 | .w1mer/detail/13_plan-14.md | todo | 0 | |
 | 14.8 | 内置函数白名单与声明式参数 | .w1mer/detail/13_plan-14.md | todo | 0 | |
-| 15 | subagent：两种继承模式 + 分叉不合并 + 深度预算 | — | todo | 0 |
+| 15 | subagent：两种继承模式 + 分叉不合并 + 深度预算 | — | active | 0 |
 | 15.1 | 内核分叉原语：子会话共享祖先 | .w1mer/detail/14_plan-15.md | todo | 0 | |
 | 15.2 | 子会话派生元数据与预算列 | .w1mer/detail/14_plan-15.md | todo | 0 | |
 | 15.3 | 深度与预算上限的纯函数准入 | .w1mer/detail/14_plan-15.md | todo | 0 | |
@@ -348,7 +348,7 @@ DSL is optional for v1, but subagent semantics must be reserved in the kernel no
 | 15.6 | 子结果摘要由父显式合回 | .w1mer/detail/14_plan-15.md | todo | 0 | |
 | 15.7 | 写集与独占声明按交集继承 | .w1mer/detail/14_plan-15.md | todo | 0 | |
 | 15.8 | 子会话用量记账与预算截停 | .w1mer/detail/14_plan-15.md | todo | 0 | |
-| 16 | 节点调度：独占声明 + 读写分离 + 声明/实际审计 | — | todo | 0 |
+| 16 | 节点调度：独占声明 + 读写分离 + 声明/实际审计 | — | active | 0 |
 | 16.1 | 资源类模型与跨工作区资源键 | .w1mer/detail/15_plan-16.md | todo | 0 | |
 | 16.2 | 独占门纯状态机与先进先出排队 | .w1mer/detail/15_plan-16.md | todo | 0 | |
 | 16.3 | 门表持久化与心跳续期回收 | .w1mer/detail/15_plan-16.md | todo | 0 | |
@@ -394,7 +394,7 @@ Only local, zero-cost measurement. No paid eval runs: real sessions are the data
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:quality -->
-| 17 | 埋点与基准：turn 延迟分解 + 冷启动 ready + 工具路径 | — | todo | 0 |
+| 17 | 埋点与基准：turn 延迟分解 + 冷启动 ready + 工具路径 | — | active | 0 |
 | 17.1 | 注入式时钟与 span 原语 | .w1mer/detail/16_plan-17.md | todo | 0 | |
 | 17.2 | 一次轮次的五阶段延迟分解 | .w1mer/detail/16_plan-17.md | todo | 0 | |
 | 17.3 | usage 四类 token 入事件表 | .w1mer/detail/16_plan-17.md | todo | 0 | |
@@ -402,7 +402,7 @@ Only local, zero-cost measurement. No paid eval runs: real sessions are the data
 | 17.5 | 冷启动到就绪的时间分解 | .w1mer/detail/16_plan-17.md | todo | 0 | |
 | 17.6 | 工具调用路径五段分解 | .w1mer/detail/16_plan-17.md | todo | 0 | |
 | 17.7 | 快照耗时随规模变化曲线 | .w1mer/detail/16_plan-17.md | todo | 0 | |
-| 18 | 工作区 export/import：搬移、备份与 replay | — | todo | 0 |
+| 18 | 工作区 export/import：搬移、备份与 replay | — | active | 0 |
 | 18.1 | bundle 目录布局与 manifest | .w1mer/detail/17_plan-18.md | todo | 0 | |
 | 18.2 | 按作用域导出元数据行 | .w1mer/detail/17_plan-18.md | todo | 0 | |
 | 18.3 | 被引用 CAS 内容打包 | .w1mer/detail/17_plan-18.md | todo | 0 | |

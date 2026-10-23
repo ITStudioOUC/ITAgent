@@ -8,7 +8,7 @@ types:
     dir: "ROADMAP.md"           # special: single table file, one row per task
     id: "{seq:02}"              # 01, 02, ...; children via --parent (05.1, 05.1.1)
     index: [id, title, status, effect]
-    states: [todo, done, reviewed, issue]
+    states: [todo, active, done, reviewed, issue]
 
   review:
     dir: "review"

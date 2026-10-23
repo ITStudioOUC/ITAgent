@@ -1,0 +1,9 @@
+[package]
+name = "ita-kernel"
+description = "纯逻辑内核：上下文树、命令文法、租约与策略类型"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
