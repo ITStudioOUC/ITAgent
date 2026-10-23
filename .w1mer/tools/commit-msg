@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# ITAgent 提交主题守门：强制 type 前缀、单行、限长、禁内部记号。
+# 由 git commit-msg 钩子调用（$1 = 提交信息文件）。规范见 AGENTS.md 第 3 节。
+set -euo pipefail
+
+msg_file="${1:-}"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+subject="$(grep -v '^#' "$msg_file" | sed '/^[[:space:]]*$/d' | head -n1 || true)"
+[ -n "$subject" ] || exit 0
+
+# 自动生成的提交放行
+case "$subject" in
+  Merge*|Revert*|revert:*|fixup!*|squash!*|amend!*|Initial\ commit*) exit 0 ;;
+esac
+
+GUIDE='主题规范：<type>: <一句中文，≤60 字>
+  type ∈ fix|feat|perf|refactor|test|docs|chore|style|bench|build|ci
+  禁止 scope 前缀（kernel/lexer:）、禁止 ｜ 分隔、禁止任务号与 ADR 号、
+  禁止提交哈希、禁止测试计数。细节写进 .w1mer/ 或 docs/design/。
+  好：feat: heredoc 分隔符缺失时拒绝写入并回显候选分隔符
+  坏：feat(kernel/lexer): 05.1 heredoc 状态机 + 失败矩阵 8 例 | 12 tests pass'
+
+fail() {
+  printf 'commit-msg 拒绝：%s\n\n%s\n' "$1" "$GUIDE" >&2
+  exit 1
+}
+
+# scope 前缀（如 kernel/lexer:），先于 type 判定以给出准确提示
+if printf '%s' "$subject" | grep -qE '^[a-z_]+(/[a-z_]+)+: '; then
+  fail "禁止 scope 前缀"
+fi
+
+if ! printf '%s' "$subject" | grep -qE '^(fix|feat|perf|refactor|test|docs|chore|style|bench|build|ci): '; then
+  fail "缺失或非法的 type 前缀"
+fi
+
+len="$(printf '%s' "$subject" | python3 -c 'import sys; print(len(sys.stdin.read().rstrip("\n")))')"
+if [ "$len" -gt 60 ]; then
+  fail "主题过长（${len} 字 > 60）"
+fi
+
+# 内部记号：｜ 分隔、任务号（05.1 这类，主号带前导零）、ADR 号、提交哈希、通过计数
+# 注意不误伤版本号（0.21.10 的主号是单个 0，不匹配任务号模式）。
+if printf '%s' "$subject" | grep -qE '｜|ADR-[0-9]+|\b0[0-9]\.[0-9]+|\bB[0-9]{3}\b|\bD-[0-9]+\b|\b[0-9a-f]{7,40}\b|[0-9]+/[0-9]+/[0-9]+'; then
+  fail "含内部记号（任务号/ADR 号/哈希/测试计数/｜分隔）"
+fi
+
+# 私有词汇（清单见 .w1mer/DOC_GUIDELINES.md 第六节）
+if printf '%s' "$subject" | grep -qE '转绿|转红|收口|残面|锚核|关卡|解锁点|逐位|放行|同形|止血|落盘'; then
+  fail "含私有词汇（清单见 .w1mer/DOC_GUIDELINES.md 第六节）"
+fi
+
+exit 0
