@@ -9,6 +9,7 @@
 
 pub mod fold;
 pub mod format;
+pub mod recent;
 pub mod trigger;
 
 pub use fold::{FoldError, FoldPlan, plan as plan_fold};
@@ -16,4 +17,5 @@ pub use format::{
     CompressError, CompressOutput, END, PROMPT_VERSION, PROSE_CLOSE, PROSE_OPEN,
     format_instructions, parse_output,
 };
+pub use recent::{SlimError, SlimToolResult, render as render_slim, slim, slim_all};
 pub use trigger::{TriggerDecision, decide};
