@@ -40,6 +40,11 @@ pub enum NodeBody {
     FixedLayer {
         /// 冻结内容的摘要，用于判断两次解析是否基于同一份固定层。
         fingerprint: String,
+        /// 冻结内容本身。
+        ///
+        /// 必须带正文：解析要把它原样放进消息数组，只留指纹的话 04.4 拿不到内容，
+        /// 而它又不能在解析时去别处取——那会破坏纯函数。
+        content: String,
     },
     /// 一轮对话里的原文。
     Turn {
@@ -214,7 +219,10 @@ mod tests {
             id: id(1),
             parent: None,
             session: session(),
-            body: NodeBody::FixedLayer { fingerprint: "fp".to_owned() },
+            body: NodeBody::FixedLayer {
+                fingerprint: "fp".to_owned(),
+                content: "system".to_owned(),
+            },
         };
         assert!(node.is_fixed_layer());
         assert!(node.as_frame().is_none());

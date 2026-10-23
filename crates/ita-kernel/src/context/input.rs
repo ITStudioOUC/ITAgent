@@ -35,8 +35,9 @@ pub struct ResolveInput {
     pub frames: Vec<Frame>,
     /// 保留的最近轮次原文，按时间顺序。
     ///
-    /// 每项是 `(轮次内节点, 该轮所属的节点 id)`。这里直接放节点而不是只放 id，是因为
-    /// 解析不能查库；调用方在装输入时就把它们取出来。
+    /// 直接放节点而不是只放 id：解析不能查库，调用方在装输入时就把它们取出来。0018 写
+    /// `Vec<NodeId>` 是形状示意，真正的契约是"解析所需的一切都在输入里"，此处取更严格
+    /// 的读法并在此注明。
     pub recent: Vec<Node>,
     /// 当前待办与其它需要放在末尾的节点。
     pub current: Vec<Node>,
@@ -117,12 +118,12 @@ impl ResolveInput {
                 return Err(InputError::WrongRecentBody { node: node.id.clone() });
             }
         }
-        for (index, pair) in self.frames.windows(2).enumerate() {
-            if let (Some(prev_last), Some(next_first)) =
-                (pair[0].covers.last(), pair[1].covers.first())
-                && prev_last == next_first
-            {
-                return Err(InputError::FramesOutOfOrder { index: index + 1 });
+        // 任意两个帧都不能共享节点：只看相邻帧的首尾会漏掉"后一帧完全包含前一帧"这类
+        // 情况，而那正是压缩重复执行最容易产生的错误输入。
+        for (index, later) in self.frames.iter().enumerate().skip(1) {
+            let earlier = &self.frames[..index];
+            if earlier.iter().any(|frame| frame.covers.iter().any(|n| later.covers.contains(n))) {
+                return Err(InputError::FramesOutOfOrder { index });
             }
         }
         Ok(())
@@ -169,7 +170,10 @@ mod tests {
             id: id(0),
             parent: None,
             session: session(),
-            body: NodeBody::FixedLayer { fingerprint: "fp".to_owned() },
+            body: NodeBody::FixedLayer {
+                fingerprint: "fp".to_owned(),
+                content: "system".to_owned(),
+            },
         }
     }
 
@@ -242,6 +246,24 @@ mod tests {
         let mut i = input();
         i.frames = vec![frame(vec![id(1), id(2)], None), frame(vec![id(2), id(3)], None)];
         assert_eq!(i.validate(), Err(InputError::FramesOutOfOrder { index: 1 }));
+    }
+
+    #[test]
+    fn 完全包含的帧被拒() {
+        let mut i = input();
+        i.frames = vec![frame(vec![id(1), id(2)], None), frame(vec![id(1), id(2), id(3)], None)];
+        assert_eq!(i.validate(), Err(InputError::FramesOutOfOrder { index: 1 }));
+    }
+
+    #[test]
+    fn 不相邻但重叠的帧被拒() {
+        let mut i = input();
+        i.frames = vec![
+            frame(vec![id(1), id(2)], None),
+            frame(vec![id(3), id(4)], None),
+            frame(vec![id(2), id(5)], None),
+        ];
+        assert_eq!(i.validate(), Err(InputError::FramesOutOfOrder { index: 2 }));
     }
 
     #[test]

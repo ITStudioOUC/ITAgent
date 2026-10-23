@@ -1,8 +1,8 @@
 //! 预算：解析与压缩共用的容量模型。
 //!
-//! 单位是"抽象计数"而不是 token：分词属于模型层，内核不能依赖具体分词器，否则同一份
-//! 输入在不同模型下会得到不同的解析结果，逐字节复现就不成立。调用方按自己的计数方式
-//! 填数，内核只做加减与比较。
+//! 两个单位并存，字段名各自标明：`limit`、`compress_reserve` 与触发点用"抽象计数"
+//! （由调用方按自己的分词方式换算），`preview_bytes` 用字节。不用 token 是因为分词属于
+//! 模型层，内核依赖具体分词器会让同一份输入在不同模型下得到不同的解析结果。
 //!
 //! 压缩预留是这个结构里最容易漏的一项：压缩本身要一次模型调用，输入是整个上下文。如果
 //! 预算里没有单独为它留位置，到阈值时压缩请求会因自身超窗而失败。
@@ -21,7 +21,7 @@ pub struct Budget {
     pub compress_reserve: u64,
     /// 保留的最近轮数。
     pub keep_recent_turns: u32,
-    /// 预览的最大字节数（头 + 尾）。
+    /// 预览的最大字节数（头 + 尾）。**单位是字节**，与上面的抽象计数不同。
     pub preview_bytes: u64,
 }
 
@@ -51,6 +51,8 @@ pub enum BudgetError {
     },
     /// 保留轮数为零：压缩后没有原文可对照，摘要的错误无法被模型自己发现。
     ZeroRecentTurns,
+    /// 预览长度为零：模型将看不到任何工具输出，连错误信息都没有。
+    ZeroPreview,
 }
 
 impl std::fmt::Display for BudgetError {
@@ -68,6 +70,7 @@ impl std::fmt::Display for BudgetError {
                 "压缩预留 {reserve} 超过触发点之后剩余的空间 {headroom}，压缩请求会因自身超窗而失败"
             ),
             Self::ZeroRecentTurns => write!(f, "保留轮数不能为零"),
+            Self::ZeroPreview => write!(f, "预览长度不能为零，否则模型看不到任何工具输出"),
         }
     }
 }
@@ -130,6 +133,10 @@ impl Budget {
                 reserve: compress_reserve,
                 headroom,
             });
+        }
+        // 预览是字节，但取零会让模型看不到任何工具输出，等于把错误信息也一起藏掉。
+        if preview_bytes == 0 {
+            return Err(BudgetError::ZeroPreview);
         }
         Ok(Self {
             limit,
@@ -233,6 +240,7 @@ mod tests {
             Err(BudgetError::TriggerOutOfRange { actual: 1001 })
         ));
         assert_eq!(Budget::new(100, 850, 1, 0, 1024), Err(BudgetError::ZeroRecentTurns));
+        assert_eq!(Budget::new(100, 850, 1, 3, 0), Err(BudgetError::ZeroPreview));
         assert!(matches!(
             Budget::new(100, 850, 100, 3, 1024),
             Err(BudgetError::ReserveTooLarge { .. })

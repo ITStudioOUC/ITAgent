@@ -114,3 +114,11 @@ state: active
   的祖先判定在部分加载时会把合法回退误报为父节点不连续。另有三处错误语义错位：`init` 用
   `UnknownSession` 表示会话已存在，`init` 用 `NotDescendantOfHead` 表示根节点带父，`append` 对无父
   节点把自身 id 填进 `parent` 字段。
+- 批次 04.3 新增 `crates/ita-kernel/src/context/{budget,input}.rs`，内核对外暴露 `Budget`、
+  `BudgetError`、`ResolveInput`、`CheckpointFacts` 与 `InputError`，版本推进到 0.1.15。契约层面新增
+  压缩预算的构造约定：上限与保留轮数非零、触发比率取 1 到 1000 的千分比、预留小于上限且不超过触发
+  点之后的余量，默认值 200000 与 850 千分比推出触发点 170000 与余量 30000。五条待闭合的约定：
+  `ResolveInput.fixed_layer` 是 `Node` 而 `NodeBody::FixedLayer` 只存指纹，解析拿不到固定层正文；
+  `recent` 取 `Vec<Node>` 而 0018 写 `Vec<NodeId>`，注释还留着元组说法；`checkpoint_facts` 取 `Vec`
+  而非映射，重复键无校验；帧重叠只比较相邻帧首尾，完全包含与非相邻重叠漏过；`preview_bytes` 是
+  字节而预算余额是抽象计数，两种单位同处一个结构且无校验。
