@@ -90,7 +90,7 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 | 04 | 上下文模型：Node/Frame/resolve/三态 notice/读集 | — | active | 0 |
 | 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/03_plan-04.md | done | 0 | 四类名义标识符与节点、帧、内容句柄定型；补上消息方向、轮次边界、工具调用与结果分离、待办变体、跨会话父边语义；96 项测试全绿，版本 0.1.13 |
 | 04.2 | 上下文树：head、分叉与 CAS | .w1mer/detail/03_plan-04.md | done | 0 | 上下文树落地：节点不可变、head 带会话与代次做比较并交换、分叉共享祖先不复制、回退仅限祖先、祖先链不完整即报错；112 项测试全绿，版本 0.1.14 |
-| 04.3 | ResolveInput 与预算结构 | .w1mer/detail/03_plan-04.md | todo | 0 | |
+| 04.3 | ResolveInput 与预算结构 | .w1mer/detail/03_plan-04.md | done | 0 | 解析输入与预算定型：固定层带正文、帧不重叠、检查点事实必须补齐、压缩预留与 85% 触发点的相容性在构造期校验；129 项测试全绿，版本 0.1.15 |
 | 04.4 | 四段解析与逐字节复现 | .w1mer/detail/03_plan-04.md | todo | 0 | |
 | 04.5 | 漂移四组合通知 | .w1mer/detail/03_plan-04.md | todo | 0 | |
 | 04.6 | 读集记录与陈旧写判定 | .w1mer/detail/03_plan-04.md | todo | 0 | |
