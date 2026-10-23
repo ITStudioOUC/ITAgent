@@ -102,4 +102,4 @@ w1mer list                         # 看当前该做什么
 
 ## 许可证
 
-待定。
+MIT，见 [LICENSE](LICENSE)。
