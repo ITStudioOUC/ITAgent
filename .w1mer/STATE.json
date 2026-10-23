@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated": "2026-10-23T15:23:27Z",
-  "current": "01",
+  "updated": "2026-10-23T15:25:50Z",
+  "current": "01.1",
   "tasks": {
     "01": {
       "type": "main",
@@ -23,6 +23,23 @@
       },
       "started": "2026-10-23T15:17:32Z",
       "ended": "2026-10-23T15:23:27Z"
+    },
+    "01.1": {
+      "type": "sub",
+      "base": "9d702c1f813395c3164d6b7d4102efdf7e6257a8",
+      "end": null,
+      "roles": {
+        "reviewer": {
+          "joined": true,
+          "at": "2026-10-23T15:25:50Z"
+        },
+        "fixer": {
+          "joined": false,
+          "at": null
+        }
+      },
+      "started": "2026-10-23T15:24:51Z",
+      "ended": null
     }
   }
 }
