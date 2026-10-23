@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated": "2026-10-23T17:20:41Z",
-  "current": "02.2",
+  "updated": "2026-10-23T17:25:26Z",
+  "current": "02.2.1",
   "tasks": {
     "01": {
       "type": "main",
@@ -82,6 +82,23 @@
       },
       "started": "2026-10-23T17:19:28Z",
       "ended": "2026-10-23T17:20:41Z"
+    },
+    "02.2.1": {
+      "type": "sub",
+      "base": "db117e9b694b009f461aab08af9c411f00557f10",
+      "end": null,
+      "roles": {
+        "reviewer": {
+          "joined": true,
+          "at": "2026-10-23T17:25:26Z"
+        },
+        "fixer": {
+          "joined": true,
+          "at": "2026-10-23T17:20:55Z"
+        }
+      },
+      "started": "2026-10-23T17:20:54Z",
+      "ended": null
     }
   }
 }

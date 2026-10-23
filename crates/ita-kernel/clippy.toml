@@ -3,8 +3,9 @@
 # cargo clippy 按被检 crate 的清单目录查找 clippy.toml，所以本文件只约束本 crate，
 # 工作区其他成员（存储、网络、执行器）不受影响。
 #
-# 目录段不支持通配符，条目必须写到具体类型或函数；写错的条目会被 clippy 报成
-# "不指向可达类型"，配合 `-D warnings` 直接失败，因此拼写错误不会静默失效。
+# 目录段不支持通配符，条目必须写到具体类型或函数。写错的条目只会让 clippy 打印一条
+# 普通警告（该诊断不走 lint 通道，`-D warnings` 不会升级它），真正的兜底是
+# .w1mer/scripts/check_kernel_purity.sh 里对 "does not refer to a reachable" 的 grep。
 
 # 拿到就必然做 IO 的类型：文件句柄、套接字、子进程、线程句柄。
 disallowed-types = [
@@ -16,6 +17,8 @@ disallowed-types = [
   "std::net::TcpListener",
   "std::net::TcpStream",
   "std::net::UdpSocket",
+  "std::backtrace::Backtrace",
+  "std::collections::hash_map::RandomState",
   "std::process::Child",
   "std::process::Command",
   "std::process::Stdio",
@@ -46,6 +49,7 @@ disallowed-methods = [
   "std::fs::remove_file",
   "std::fs::rename",
   "std::fs::set_permissions",
+  "std::fs::exists",
   "std::fs::symlink_metadata",
   "std::fs::write",
   # 网络。
@@ -54,8 +58,11 @@ disallowed-methods = [
   "std::net::UdpSocket::bind",
   # 进程与线程：一旦能起子进程或后台线程，就不再是可重放的纯函数。
   "std::process::abort",
+  "std::process::id",
   "std::process::exit",
   "std::thread::Builder::new",
+  "std::thread::available_parallelism",
+  "std::thread::current",
   "std::thread::park",
   "std::thread::park_timeout",
   "std::thread::scope",
@@ -77,6 +84,8 @@ disallowed-methods = [
   # 写标准输出与标准错误也是 IO；print! 与 println! 展开成这两个内部函数。
   "std::io::_eprint",
   "std::io::_print",
+  "std::io::copy",
+  "std::io::read_to_string",
   "std::io::stderr",
   "std::io::stdin",
   "std::io::stdout",
