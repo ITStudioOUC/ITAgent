@@ -193,3 +193,15 @@ state: active
   止于 head、覆盖段与保留段不重叠"这条 0004 与输入校验都留给提交阶段的检查无人承接；事实段的
   "覆盖轮数"与帧渲染的"覆盖 N 个节点"是两种口径共用一个词，帧正文还因 `Facts::render` 的末尾
   换行以空行收尾。
+- 批次 06.1 新增 `crates/ita-store/{src/db.rs,src/migrate.rs,src/scope.rs}` 与
+  `migrations/0001_core.sql`，存储层首次对外暴露 `Store`、`StoreError`、`WorkspaceScope`
+  与 `migrate::run`，版本推进到 0.1.24；根清单新增 `rusqlite`（bundled 特性）与 `ulid`
+  两个工作区依赖。契约层面新增三条形状：`Store::open` 打开即跑完迁移、`Store::scope`
+  以"工作区已注册"为构造前提、迁移版本记在 `schema_version` 表而非 SQLite 的
+  `user_version`。另有六条待闭合：工作区行与 `workspace_seq` 行分两条语句写，中断后
+  计数器无法补写且重跑只会返回 `WorkspaceExists`；迁移脚本内容漂移没有任何检查，
+  已迁移的库里改过的 SQL 不会执行而新库按新内容建表；实际没有一处使用
+  `BEGIN IMMEDIATE`，`busy_timeout` 对 `SQLITE_BUSY_SNAPSHOT` 无效；`journal_mode=WAL`
+  失败被静默忽略且不校验实际模式；`WorkspaceScope` 只证明工作区存在、不证明来自连接，
+  `create_workspace` 与 `workspace_count` 是不带作用域的公开入口；`nodes` 的
+  `workspace_id` 与 `session_id` 没有同工作区约束，`events` 的会话与节点列没有外键。

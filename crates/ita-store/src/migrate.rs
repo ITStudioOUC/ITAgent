@@ -28,6 +28,22 @@ pub struct Migration {
 pub enum MigrateError {
     /// 数据库操作失败。
     Sqlite(rusqlite::Error),
+    /// 已执行的迁移脚本内容与当前二进制里的不一致。
+    ///
+    /// 这说明有人改了已发布的迁移文件。同一个版本号对应两套表结构，新库与老库会分叉。
+    ScriptChanged {
+        /// 出问题的版本。
+        version: u32,
+    },
+    /// 数据库的版本高于本二进制支持的版本。
+    ///
+    /// 旧二进制读写新表结构不会立刻报错，只会在很久之后以奇怪的方式失败。
+    DatabaseNewer {
+        /// 库里的版本。
+        database: u32,
+        /// 本二进制支持的最高版本。
+        supported: u32,
+    },
     /// 已执行的版本号出现空洞，说明有人手工改过库。
     VersionGap {
         /// 期望的版本。
@@ -41,6 +57,13 @@ impl std::fmt::Display for MigrateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Sqlite(e) => write!(f, "数据库错误：{e}"),
+            Self::ScriptChanged { version } => write!(
+                f,
+                "迁移 {version} 的脚本内容与已执行的不一致；已发布的迁移不允许修改，请新增一条"
+            ),
+            Self::DatabaseNewer { database, supported } => {
+                write!(f, "数据库版本 {database} 高于本程序支持的 {supported}；请升级程序")
+            }
             Self::VersionGap { expected, found } => {
                 write!(f, "迁移版本不连续：期望 {expected}，实际 {found}")
             }
@@ -84,21 +107,43 @@ pub fn run(conn: &mut Connection) -> Result<u32, MigrateError> {
         "CREATE TABLE IF NOT EXISTS schema_version (
              version INTEGER PRIMARY KEY,
              name    TEXT NOT NULL,
-             applied_at INTEGER NOT NULL
+             applied_at INTEGER NOT NULL,
+             script_hash TEXT
          );",
     )?;
 
-    let applied: Vec<u32> = {
-        let mut stmt = conn.prepare("SELECT version FROM schema_version ORDER BY version")?;
-        let rows = stmt.query_map([], |row| row.get::<_, u32>(0))?;
+    let applied: Vec<(u32, Option<String>)> = {
+        let mut stmt =
+            conn.prepare("SELECT version, script_hash FROM schema_version ORDER BY version")?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, u32>(0)?, row.get::<_, Option<String>>(1)?)))?;
         rows.collect::<Result<Vec<_>, _>>()?
     };
 
-    for (index, version) in applied.iter().enumerate() {
+    for (index, (version, _)) in applied.iter().enumerate() {
         let expected = u32::try_from(index).unwrap_or(u32::MAX) + 1;
         if *version != expected {
             return Err(MigrateError::VersionGap { expected, found: *version });
         }
+    }
+
+    // 已执行的脚本内容必须与当前二进制里的一致。改了已发布的迁移而不新增版本，会让新库
+    // 与老库的表结构分叉，而两边都不会报错。
+    for (version, recorded) in &applied {
+        let Some(migration) = MIGRATIONS.iter().find(|m| m.version == *version) else {
+            continue;
+        };
+        if let Some(recorded) = recorded
+            && recorded != &script_hash(migration.sql)
+        {
+            return Err(MigrateError::ScriptChanged { version: *version });
+        }
+    }
+
+    let supported = MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0);
+    let database = applied.last().map(|(v, _)| *v).unwrap_or(0);
+    if database > supported {
+        return Err(MigrateError::DatabaseNewer { database, supported });
     }
 
     let current = applied.len() as u32;
@@ -107,11 +152,14 @@ pub fn run(conn: &mut Connection) -> Result<u32, MigrateError> {
         return Ok(current);
     }
 
-    let tx = conn.transaction()?;
+    // 立即事务：一开始就拿写锁。延迟事务会在提交时才升级锁，在 WAL 下可能拿到
+    // SQLITE_BUSY_SNAPSHOT——它不是"重试这条语句"能解决的，必须整笔重来。
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     for migration in &pending {
         tx.execute_batch(migration.sql)?;
         tx.execute(
-            "INSERT INTO schema_version (version, name, applied_at) VALUES (?1, ?2, ?3)",
+            "INSERT INTO schema_version (version, name, applied_at, script_hash)
+             VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![
                 migration.version,
                 migration.name,
@@ -119,13 +167,26 @@ pub fn run(conn: &mut Connection) -> Result<u32, MigrateError> {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0)
+                    .unwrap_or(0),
+                script_hash(migration.sql)
             ],
         )?;
     }
     tx.commit()?;
 
     Ok(MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0))
+}
+
+/// 迁移脚本的内容指纹。
+///
+/// 用标准库的哈希器而不是引入依赖：这里只需要"内容变了就不同"，不需要密码学强度。
+/// 长度与字节数一起参与，避免极短脚本的碰撞。
+fn script_hash(sql: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    sql.hash(&mut hasher);
+    sql.len().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 /// 当前已执行的最高版本。
@@ -184,7 +245,42 @@ mod tests {
     }
 
     #[test]
-    fn 迁移是幂等的() {
+    fn 已执行脚本内容变化时拒绝启动() {
+        let mut conn = memory();
+        run(&mut conn).expect("首次应当成功");
+        // 模拟"有人改了已发布的迁移脚本"：把记录的哈希改掉。
+        conn.execute("UPDATE schema_version SET script_hash = 'deadbeef'", []).expect("应当可改");
+        let err = run(&mut conn).expect_err("应当被拒");
+        assert!(matches!(err, MigrateError::ScriptChanged { version: 1 }));
+    }
+
+    #[test]
+    fn 数据库版本高于程序支持时拒绝启动() {
+        let mut conn = memory();
+        run(&mut conn).expect("首次应当成功");
+        conn.execute(
+            "INSERT INTO schema_version (version, name, applied_at, script_hash)
+             VALUES (2, 'future', 0, NULL)",
+            [],
+        )
+        .expect("应当可插");
+        let err = run(&mut conn).expect_err("应当被拒");
+        assert!(matches!(err, MigrateError::DatabaseNewer { database: 2, supported: 1 }));
+    }
+
+    #[test]
+    fn 脚本里不允许破坏性语句() {
+        // 纪律靠扫描守住：只加不改不是靠自觉。
+        for migration in MIGRATIONS {
+            let upper = migration.sql.to_uppercase();
+            for forbidden in ["DROP TABLE", "DELETE FROM", "VACUUM", "PRAGMA"] {
+                assert!(!upper.contains(forbidden), "迁移 {} 含 {forbidden}", migration.version);
+            }
+        }
+    }
+
+    #[test]
+    fn 脚本可重复执行() {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         // 表已存在时再跑一遍迁移 SQL 不应失败（脚本自带 IF NOT EXISTS）。

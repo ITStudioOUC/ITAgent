@@ -23,6 +23,12 @@ pub enum StoreError {
     Migrate(MigrateError),
     /// 工作区不存在。
     UnknownWorkspace(String),
+    /// 该文件系统不支持 WAL，返回实际使用的日志模式。
+    WalUnavailable(String),
+    /// 系统时钟早于 1970。
+    ClockBeforeEpoch,
+    /// 时间戳超出 i64 范围。
+    ClockOverflow,
     /// 工作区已存在。
     WorkspaceExists(String),
 }
@@ -33,6 +39,12 @@ impl std::fmt::Display for StoreError {
             Self::Sqlite(e) => write!(f, "数据库错误：{e}"),
             Self::Migrate(e) => write!(f, "迁移失败：{e}"),
             Self::UnknownWorkspace(id) => write!(f, "未知工作区 {id}"),
+            Self::ClockBeforeEpoch => write!(f, "系统时钟早于 1970，拒绝写入不可区分的时间戳"),
+            Self::ClockOverflow => write!(f, "时间戳超出可存储范围"),
+            Self::WalUnavailable(mode) => write!(
+                f,
+                "该文件系统不支持 WAL（实际模式 {mode}）；读将被写阻塞，批量提交的吞吐假设不成立"
+            ),
             Self::WorkspaceExists(id) => write!(f, "工作区 {id} 已存在"),
         }
     }
@@ -85,16 +97,34 @@ impl Store {
         Self::configure(conn)
     }
 
-    fn configure(conn: Connection) -> Result<Self, StoreError> {
+    fn configure(mut conn: Connection) -> Result<Self, StoreError> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        // WAL 让读不被写阻塞；内存库不支持 WAL，失败时忽略即可。
-        let _ = conn.pragma_update(None, "journal_mode", "WAL");
         // 5 秒忙等：写事务冲突时自动重试，而不是立刻抛 SQLITE_BUSY。
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        // 立即事务：后续所有 `transaction()` 一开始就拿写锁。延迟事务在 WAL 下会在提交时
+        // 才升级锁，可能拿到 SQLITE_BUSY_SNAPSHOT——它不能靠重试语句解决。
+        conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
 
-        let mut conn = conn;
         migrate::run(&mut conn)?;
         Ok(Self { conn })
+    }
+
+    /// 打开一个文件库并确认 WAL 真的生效。
+    ///
+    /// # 边界与前提
+    /// WAL 让读不被写阻塞，而单写者加批量提交的吞吐假设正建立在这上面。某些文件系统
+    /// （网络盘、部分容器卷）不支持共享内存，会静默退回 rollback journal，因此这里校验
+    /// 实际模式而不是假设 `pragma_update` 成功就拿到了 WAL。
+    ///
+    /// # 副作用
+    /// 创建文件、WAL 与 SHM 文件。
+    pub fn open_with_wal(path: &Path) -> Result<Self, StoreError> {
+        let conn = Connection::open(path)?;
+        let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
+        if !mode.eq_ignore_ascii_case("wal") {
+            return Err(StoreError::WalUnavailable(mode));
+        }
+        Self::configure(conn)
     }
 
     /// 注册一个工作区。
@@ -105,22 +135,27 @@ impl Store {
     /// # 副作用
     /// 写库。
     pub fn create_workspace(
-        &self,
+        &mut self,
         id: &ita_kernel::context::WorkspaceId,
         root_path: &str,
     ) -> Result<(), StoreError> {
-        let now = now_millis();
-        let changed = self.conn.execute(
-            "INSERT OR IGNORE INTO workspaces (id, root_path, created_at) VALUES (?1, ?2, ?3)",
+        let now = now_millis()?;
+        // 两条插入必须在同一事务里：中间崩溃会留下"有工作区、没计数器"的库，而重跑时
+        // 第一条 INSERT 影响零行、直接报已存在，计数器行再也补不上。
+        let tx = self.conn.transaction()?;
+        let changed = tx.execute(
+            "INSERT INTO workspaces (id, root_path, created_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO NOTHING",
             rusqlite::params![id.as_str(), root_path, now],
         )?;
         if changed == 0 {
             return Err(StoreError::WorkspaceExists(id.as_str().to_owned()));
         }
-        self.conn.execute(
-            "INSERT OR IGNORE INTO workspace_seq (workspace_id, next_seq) VALUES (?1, 1)",
+        tx.execute(
+            "INSERT INTO workspace_seq (workspace_id, next_seq) VALUES (?1, 1)",
             rusqlite::params![id.as_str()],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -180,13 +215,19 @@ impl Store {
 
 /// 当前时间（epoch 毫秒）。
 ///
+/// # 边界与前提
+/// 时钟异常（早于 1970）时返回错误而不是零：写出一行 `created_at = 0` 会与"1970 年"不可
+/// 区分，而这种行会在排序与过期判断里造成难以追踪的偏差。
+///
 /// # 副作用
 /// 读时钟。存储层允许，内核不允许。
-pub(crate) fn now_millis() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+pub(crate) fn now_millis() -> Result<i64, StoreError> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| StoreError::ClockBeforeEpoch)?
+        .as_millis();
+    i64::try_from(millis).map_err(|_| StoreError::ClockOverflow)
 }
 
 #[cfg(test)]
@@ -209,7 +250,7 @@ mod tests {
 
     #[test]
     fn 注册工作区后可以取作用域() {
-        let store = Store::open_in_memory().expect("应当可以打开");
+        let mut store = Store::open_in_memory().expect("应当可以打开");
         let id = workspace(ID_A);
         store.create_workspace(&id, "/tmp/ws").expect("应当成功");
         let scope = store.scope(&id).expect("应当可以取作用域");
@@ -226,7 +267,7 @@ mod tests {
 
     #[test]
     fn 重复注册同一工作区被拒() {
-        let store = Store::open_in_memory().expect("应当可以打开");
+        let mut store = Store::open_in_memory().expect("应当可以打开");
         let id = workspace(ID_A);
         store.create_workspace(&id, "/tmp/ws").expect("首次应当成功");
         let err = store.create_workspace(&id, "/tmp/ws").expect_err("应当被拒");
@@ -235,7 +276,7 @@ mod tests {
 
     #[test]
     fn 多个工作区互不影响() {
-        let store = Store::open_in_memory().expect("应当可以打开");
+        let mut store = Store::open_in_memory().expect("应当可以打开");
         store.create_workspace(&workspace(ID_A), "/tmp/a").expect("应当成功");
         store.create_workspace(&workspace(ID_B), "/tmp/b").expect("应当成功");
         assert_eq!(store.workspace_count().expect("应当可读"), 2);
