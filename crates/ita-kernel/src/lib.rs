@@ -14,3 +14,4 @@
 #![deny(clippy::disallowed_types)]
 
 pub mod command;
+pub mod context;
