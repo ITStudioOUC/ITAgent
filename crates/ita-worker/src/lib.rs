@@ -6,7 +6,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
-/// worker 的入口，接受已建立的会话连接。
+/// worker 的入口。当前不接受参数，会话连接的建立等协议层落地后再补。
 ///
 /// # 步骤
 /// 1. 等待 server 下发会话绑定。
