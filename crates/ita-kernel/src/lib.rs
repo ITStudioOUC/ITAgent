@@ -12,3 +12,5 @@
 #![deny(missing_docs)]
 #![deny(clippy::disallowed_methods)]
 #![deny(clippy::disallowed_types)]
+
+pub mod command;
