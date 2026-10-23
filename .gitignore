@@ -1,0 +1,10 @@
+# Environment
+.env
+
+# Rust dev artifacts
+target/
+
+# Agent
+.w1mer/
+AGENTS.md
+.ita/
