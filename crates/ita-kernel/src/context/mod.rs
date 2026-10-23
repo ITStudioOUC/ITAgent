@@ -9,6 +9,8 @@
 
 pub mod ids;
 pub mod node;
+pub mod tree;
 
 pub use ids::{CheckpointId, IdError, NodeId, SessionId, WorkspaceId};
 pub use node::{BlobRef, Frame, Node, NodeBody, TurnRole};
+pub use tree::{HeadToken, Tree, TreeError};
