@@ -1,0 +1,9 @@
+[package]
+name = "ita-model"
+description = "模型供应商适配：报文归一化、流式聚合与用量记账"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]

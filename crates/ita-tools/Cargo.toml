@@ -1,0 +1,9 @@
+[package]
+name = "ita-tools"
+description = "工具清单、模板 ABI、注册表与安装流水线"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]

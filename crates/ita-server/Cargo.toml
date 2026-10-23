@@ -1,0 +1,13 @@
+[package]
+name = "ita-server"
+description = "唯一数据库写者：unit 监督、路由、事件日志与模型代理"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ita-store = { path = "../ita-store" }
+ita-proto = { path = "../ita-proto" }
+ita-model = { path = "../ita-model" }
+ita-workflow = { path = "../ita-workflow" }
