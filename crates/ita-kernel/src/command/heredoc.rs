@@ -43,7 +43,9 @@ pub const MAX_DELIMITER_LEN: usize = 64;
 /// 正文里出现同名的行就会提前终止——这是 heredoc 的固有语义，不是缺陷。因此工具描述里
 /// 要要求模型选一个罕见的分隔符。
 pub fn scan_heredoc(rest: &str, max_body: usize) -> Result<HereDoc, ParseError> {
-    let (delimiter, quoted, after_delimiter) = split_delimiter(rest)?;
+    // after_offset 是"分隔符之后那段"在 rest 里的起点，用于把正文里的位置换算成
+    // rest 内的绝对偏移，保证所有错误的 offset 都相对同一个基准。
+    let (delimiter, quoted, after_delimiter, after_offset) = split_delimiter(rest)?;
 
     let body_start = match after_delimiter.find('\n') {
         Some(idx) => idx + 1,
@@ -89,25 +91,25 @@ pub fn scan_heredoc(rest: &str, max_body: usize) -> Result<HereDoc, ParseError> 
     let trailing = &body_and_rest[trailing_start..];
     if let Some(offset) = trailing.find(|c: char| !c.is_whitespace()) {
         return Err(ParseError::TrailingText {
-            offset: body_start + trailing_start + offset,
+            offset: after_offset + body_start + trailing_start + offset,
             text: trailing[offset..].chars().take(40).collect(),
         });
     }
 
     // 未加引号的分隔符在真实 shell 里会展开正文；这里不支持展开，因此只在正文不含
     // 展开字符时接受。含 `$` 或反引号的正文必须改用引号形式。
-    if !quoted && body.contains(['$', '`']) {
+    if !quoted && body.contains(['$', '`', '\\']) {
         return Err(ParseError::InvalidDelimiter {
             offset: 0,
             delimiter,
-            reason: "未加引号的分隔符在真实 shell 里会展开正文，而正文含 $ 或反引号；请改用 <<'分隔符' 的写法",
+            reason: "未加引号的分隔符在真实 shell 里会展开正文（变量、命令替换、反斜杠转义），而正文含这些字符；请改用 <<'分隔符' 的写法",
         });
     }
 
     Ok(HereDoc { delimiter, body: body.to_owned() })
 }
 
-/// 切出分隔符，返回 (分隔符, 是否被引号包裹, 分隔符之后的文本)。
+/// 切出分隔符，返回 (分隔符, 是否被引号包裹, 分隔符之后的文本, 该文本在 rest 内的起点)。
 ///
 /// # 边界与前提
 /// `rest` 以分隔符开头，前后允许有空白。分隔符可以被单引号或双引号包裹，两种在真实
@@ -115,7 +117,7 @@ pub fn scan_heredoc(rest: &str, max_body: usize) -> Result<HereDoc, ParseError> 
 ///
 /// # 副作用
 /// 无。
-fn split_delimiter(rest: &str) -> Result<(String, bool, &str), ParseError> {
+fn split_delimiter(rest: &str) -> Result<(String, bool, &str, usize), ParseError> {
     let trimmed = rest.trim_start_matches([' ', '\t']);
     let base_offset = rest.len() - trimmed.len();
 
@@ -134,7 +136,7 @@ fn split_delimiter(rest: &str) -> Result<(String, bool, &str), ParseError> {
     };
 
     validate_delimiter(raw, base_offset)?;
-    Ok((raw.to_owned(), quoted, &trimmed[consumed..]))
+    Ok((raw.to_owned(), quoted, &trimmed[consumed..], base_offset + consumed))
 }
 
 /// 校验分隔符的形状。
@@ -298,6 +300,24 @@ mod tests {
     fn 分隔符后无换行时报未终止() {
         let err = scan_heredoc("'X'", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::UnterminatedHereDoc { .. }));
+    }
+
+    #[test]
+    fn 残留文本的位置相对整段输入() {
+        // `'X'` 3 字节、`\n` 1、`body\n` 5、`X` 1、`\n` 1，残留的 `t` 在第 11 字节。
+        // 所有错误的 offset 都以 rest 为基准，调用方加上 `<<` 的位置即得整条命令里的偏移。
+        let err = scan_heredoc("'X'\nbody\nX\ntrailing", DEFAULT_MAX_BODY).expect_err("应当被拒");
+        assert_eq!(err.offset(), Some(11));
+
+        // 残留前多一个空行时偏移随之加一。
+        let err = scan_heredoc("'X'\nbody\nX\n\ntrailing", DEFAULT_MAX_BODY).expect_err("应当被拒");
+        assert_eq!(err.offset(), Some(12));
+    }
+
+    #[test]
+    fn 未加引号且正文含反斜杠时拒绝() {
+        let err = scan_heredoc("X\na\\nb\nX", DEFAULT_MAX_BODY).expect_err("应当被拒");
+        assert!(matches!(err, ParseError::InvalidDelimiter { .. }));
     }
 
     #[test]
