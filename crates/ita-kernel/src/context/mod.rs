@@ -11,10 +11,12 @@ pub mod budget;
 pub mod ids;
 pub mod input;
 pub mod node;
+pub mod resolve;
 pub mod tree;
 
 pub use budget::{Budget, BudgetError};
 pub use ids::{CheckpointId, IdError, NodeId, SessionId, WorkspaceId};
 pub use input::{CheckpointFacts, InputError, ResolveInput};
 pub use node::{BlobRef, Frame, Node, NodeBody, TurnRole};
+pub use resolve::{Drift, Message, MessageRole, ResolvedContext, Segment, resolve};
 pub use tree::{HeadToken, Tree, TreeError};
