@@ -140,3 +140,14 @@ state: active
   写法会退化成 `Unknown` 并静默允许写入；`readers` 只返回读过该路径的全部会话，交不出"记录已
   过期"的子集，且不导出遍历原语，存储层取不到全表；`ReadRecord.seq` 没有任何消费点，`record`
   也不比较序号，乱序或重放的旧记录会覆盖新记录并造成误判过期。
+- 批次 05.1 新增 `crates/ita-kernel/src/context/compress/format.rs` 与模块入口，内核对外暴露
+  `parse_output`、`format_instructions`、`CompressOutput`、`CompressError`、`PROMPT_VERSION`
+  与三个标记常量，版本推进到 0.1.18。契约层面新增压缩输出的形状约定：整段以 `<end>` 收尾
+  （允许尾部空白），恰好一个 `<prose>` 段且段外无内容，散文非空且不超过调用方给出的字节上限；
+  失败即拒，不拿半截摘要替换上下文。六条待闭合的约定：输出结构在类型上确实不含事实，但
+  `format_instructions` 的示例正文仍邀请模型写"否决了哪些方案"，与 0004 的事实层分工冲突；
+  `prompt_version` 在解析时填编译期常量，记的是解析器版本而非生成文本所用提示版本；版本与
+  提示文本无联动，一致性用例喂给解析器的是测试自拼的样例而非模板正文；标记不在末尾、大小写
+  不符、标记后多一句都归入 `Truncated`，提示语因此会误报"被截断"；`is_retryable` 恒真，
+  把长度类失败与随机性类失败并成一类；散文上限是调用方入参的裸字节数，0018 参数表没有这一项，
+  也不受 `compress_reserve` 约束。

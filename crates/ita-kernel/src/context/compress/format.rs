@@ -22,6 +22,10 @@ pub const PROMPT_VERSION: u32 = 1;
 pub enum CompressError {
     /// 缺少结束标记：输出被截断。
     Truncated,
+    /// 结束标记存在但大小写不符。
+    ///
+    /// 单独一类，因为它不是截断——原样重试有意义，而"缩小输入"是错的方向。
+    MarkerCaseMismatch,
     /// 缺少散文段，或标记不成对。
     MissingProse,
     /// 散文段之外出现了非空白内容。
@@ -41,16 +45,26 @@ pub enum CompressError {
 }
 
 impl CompressError {
-    /// 是否值得重试。
+    /// 是否值得原样重试。
     ///
     /// # 边界与前提
-    /// 全部可重试：这些错误都来自模型输出的随机性，重发一次可能就好。与命令文法的语法
-    /// 错误不同——那种重试必然得到同样结果。
+    /// 标记类错误（缺散文段、标记之外有内容、散文为空）来自模型输出的随机性，原样重试
+    /// 有意义。截断与超长则说明**输入太大或输出被长度限制切断**，原样重试必然再次失败：
+    /// 调用方必须先降低输入规模（更早压缩、更短的保留轮次）再重试。把它们归成一类会让
+    /// 协调器陷入无意义的循环。
     ///
     /// # 副作用
     /// 无。
     pub fn is_retryable(&self) -> bool {
-        true
+        !self.needs_smaller_input()
+    }
+
+    /// 是否需要先缩小输入再重试。
+    ///
+    /// # 副作用
+    /// 无。
+    pub fn needs_smaller_input(&self) -> bool {
+        matches!(self, Self::Truncated | Self::ProseTooLong { .. })
     }
 
     /// 给模型或日志看的一句话。
@@ -58,6 +72,9 @@ impl CompressError {
         match self {
             Self::Truncated => {
                 format!("压缩输出缺少结束标记 `{END}`，可能被截断；请重新生成完整输出。")
+            }
+            Self::MarkerCaseMismatch => {
+                format!("结束标记 `{END}` 的大小写不符；标记区分大小写，请照抄格式说明。")
             }
             Self::MissingProse => {
                 format!("压缩输出缺少 `{PROSE_OPEN}` 与 `{PROSE_CLOSE}` 包裹的散文段。")
@@ -110,6 +127,12 @@ pub struct CompressOutput {
 pub fn parse_output(raw: &str, prose_limit: usize) -> Result<CompressOutput, CompressError> {
     let trimmed = raw.trim_end();
     let Some(body) = trimmed.strip_suffix(END) else {
+        // 标记存在但写法不同（大小写不符）与真正的截断要分开：前者原样重试有意义，
+        // 后者必须先缩小输入。
+        let lowered = trimmed.to_ascii_lowercase();
+        if lowered.ends_with(&END.to_ascii_lowercase()) {
+            return Err(CompressError::MarkerCaseMismatch);
+        }
         return Err(CompressError::Truncated);
     };
     let body = body.trim();
@@ -155,8 +178,10 @@ pub fn parse_output(raw: &str, prose_limit: usize) -> Result<CompressOutput, Com
 /// 无。
 pub fn format_instructions() -> String {
     format!(
-        "把这段历史压缩成摘要，严格按下面的格式输出，不要写任何其它内容：\n\
-         {PROSE_OPEN}\n<摘要正文：做了什么、为什么这样选、否决了哪些方案>\n{PROSE_CLOSE}\n\
+        "把这段历史压缩成摘要，严格按下面的格式输出，不要写任何其它内容。\n\
+         事实部分（改动文件、失败的测试、报错）由系统填写，你只写叙述：做了什么、\n\
+         为什么这样选。\n\
+         {PROSE_OPEN}\n<叙述正文>\n{PROSE_CLOSE}\n\
          {END}"
     )
 }
@@ -189,7 +214,9 @@ mod tests {
         let raw = format!("{PROSE_OPEN}\nx\n{PROSE_CLOSE}");
         let err = parse_output(&raw, LIMIT).expect_err("应当被拒");
         assert_eq!(err, CompressError::Truncated);
-        assert!(err.is_retryable());
+        // 截断通常意味着输出被长度限制切断，原样重试会再次失败。
+        assert!(!err.is_retryable());
+        assert!(err.needs_smaller_input());
     }
 
     #[test]
@@ -245,16 +272,42 @@ mod tests {
     }
 
     #[test]
-    fn 所有错误都可重试() {
+    fn 重试分类区分随机性错误与输入过大() {
         for err in [
-            CompressError::Truncated,
             CompressError::MissingProse,
             CompressError::EmptyProse,
+            CompressError::MarkerCaseMismatch,
             CompressError::StrayText { text: "x".to_owned() },
-            CompressError::ProseTooLong { actual: 1, limit: 0 },
         ] {
-            assert!(err.is_retryable(), "{err:?} 应当可重试");
+            assert!(err.is_retryable(), "{err:?} 原样重试有意义");
+            assert!(!err.needs_smaller_input(), "{err:?} 不需要缩小输入");
         }
+        for err in [CompressError::Truncated, CompressError::ProseTooLong { actual: 1, limit: 0 }] {
+            assert!(!err.is_retryable(), "{err:?} 原样重试会再次失败");
+            assert!(err.needs_smaller_input(), "{err:?} 必须先缩小输入");
+        }
+    }
+
+    #[test]
+    fn 标记大小写不符与截断分开() {
+        let raw = format!("{PROSE_OPEN}\nx\n{PROSE_CLOSE}\n<END>");
+        assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::MarkerCaseMismatch));
+
+        let raw = format!("{PROSE_OPEN}\nx\n{PROSE_CLOSE}");
+        assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::Truncated));
+    }
+
+    #[test]
+    fn 散文里含闭合标记字符串时按第一个闭合处理() {
+        // 契约不允许嵌套；出现这种情况时后面的内容会被判成标记之外的说明。
+        let raw = format!("{PROSE_OPEN}\na </prose> b\n{PROSE_CLOSE}\n{END}");
+        let err = parse_output(&raw, LIMIT).expect_err("应当被拒");
+        assert!(matches!(err, CompressError::StrayText { .. }), "实际为 {err:?}");
+    }
+
+    #[test]
+    fn 只有结束标记时被拒() {
+        assert_eq!(parse_output(END, LIMIT), Err(CompressError::MissingProse));
     }
 
     #[test]
