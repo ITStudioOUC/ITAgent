@@ -49,7 +49,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | 02 | 仓库骨架：cargo workspace + ita 单二进制 + CI | — | active | 0 |
 | 02.1 | 根清单与内核空壳 | .w1mer/detail/01_plan-02.md | done | 0 | 工作区单成员、内核零依赖、版本 0.1.0 由 workspace.package 唯一来源；review 判 ok，纯净门的可执行方案已实测并归档 |
 | 02.2 | 内核纯净门与依赖断言 | .w1mer/detail/01_plan-02.md | done | 0 | 纯净门落地：crate 内 clippy 配置 83 行、内核两条 deny、脚本断言零普通依赖且无 build.rs；注入 Instant::now 实测 clippy 退出 101、脚本退出 1，还原后通过；版本 0.1.1 |
-| 02.2.1 | 补审纯净门并核对 CI 方案 | — | todo | 0 | |
+| 02.2.1 | 补审纯净门并核对 CI 方案 | — | done | 0 | 四处缺口关闭：dev 依赖与构建脚本不再有豁免通道，补八个 std 入口，注释改为与实测一致；三项验证与纯净门全绿 |
 | 02.3 | CI 流水线五项门 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.4 | 基础层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | todo | 0 | |
 | 02.5 | 上层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | todo | 0 | |
