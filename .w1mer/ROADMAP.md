@@ -81,12 +81,12 @@ Pure logic only (`ita-kernel`): no IO, no async, no DB. This is where the
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:kernel -->
-| 03 | 受限 bash 文法：Command AST + lexer + heredoc + 失败矩阵 | — | active | 0 |
+| 03 | 受限 bash 文法：Command AST + lexer + heredoc + 失败矩阵 | — | done | 0 | 五个批次完成：语法树、词法、heredoc、装配、失败矩阵；75 项内核测试与 5 项入口矩阵全绿，命令文法可直接被执行器消费 |
 | 03.1 | Command AST 类型与目标提取 | .w1mer/detail/02_plan-03.md | done | 0 | 命令语法树与错误类型冻结：读路径只取自输入重定向、写路径取自两种输出重定向并排序去重，Display 连 heredoc 正文一起输出因此可粘贴复现；13 项测试全绿，版本 0.1.8 |
 | 03.2 | 词法扫描：词、引号与算符 | .w1mer/detail/02_plan-03.md | done | 0 | 词法层落地：词、单双引号、转义（与真实 shell 一致）、四种算符，拒绝命令替换、变量与括号展开、通配符、逻辑连接、管道、herestring、剥制表符；34 项测试全绿，版本 0.1.9 |
 | 03.3 | heredoc 状态机与十项失败 | .w1mer/detail/02_plan-03.md | done | 0 | heredoc 状态机落地：分隔符校验（字符集、长度、首字符）、逐行精确匹配、残留检测、正文上限、未引号正文的展开字符检查；十类失败全部有检测，54 项测试全绿，版本 0.1.10 |
 | 03.4 | 语法装配：单命令与重定向 | .w1mer/detail/02_plan-03.md | done | 0 | 语法装配落地：命令名、参数、三种重定向、单个 heredoc；结构约束（两个 heredoc、与输入重定向同现、空目标、记号上限）全部前移到装配前检查；75 项测试全绿，版本 0.1.11 |
-| 03.5 | 失败矩阵总表与诊断 | .w1mer/detail/02_plan-03.md | todo | 0 | |
+| 03.5 | 失败矩阵总表与诊断 | .w1mer/detail/02_plan-03.md | done | 0 | 失败矩阵在公共入口上跑 33 条拒绝用例与 15 条合法对照，覆盖十类失败与全部越界构造；每条拒绝都断言错误类别、可操作关键词、不可重试、带偏移；版本 0.1.12 |
 | 04 | 上下文模型：Node/Frame/resolve/三态 notice/读集 | — | active | 0 |
 | 04.1 | Node、Frame 与 id 类型 | .w1mer/detail/03_plan-04.md | todo | 0 | |
 | 04.2 | 上下文树：head、分叉与 CAS | .w1mer/detail/03_plan-04.md | todo | 0 | |
