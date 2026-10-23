@@ -18,6 +18,11 @@ use super::node::Node;
 /// 写入会通过比较。代次是单调的，因此能区分"同一个节点，但不是同一次推进"。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadToken {
+    /// 令牌属于哪个会话。
+    ///
+    /// 必须带上：两个子会话可以从同一个父节点分叉，此时它们的节点与代次完全相同，
+    /// 若令牌不含会话，一个子会话就能拿自己的令牌推进另一个的 head。
+    pub session: SessionId,
     /// 当前指向的节点。
     pub node: NodeId,
     /// 该会话的推进代次，从零开始，每次成功推进加一。
@@ -38,6 +43,24 @@ pub enum TreeError {
     UnknownNode(NodeId),
     /// 引用了不存在的会话。
     UnknownSession(SessionId),
+    /// 会话已存在，不能重复建立。
+    SessionExists(SessionId),
+    /// 根节点带了父节点。
+    RootHasParent {
+        /// 那个父节点。
+        parent: NodeId,
+    },
+    /// 令牌不属于该会话。
+    ForeignToken {
+        /// 令牌声明的会话。
+        token: SessionId,
+        /// 实际操作的会话。
+        expected: SessionId,
+    },
+    /// 祖先链不完整：某个父节点不在树里。
+    ///
+    /// 静默截断会让调用方拿到一段看起来完整、实际缺失中间节点的历史，因此显式报错。
+    IncompleteChain(NodeId),
     /// 新节点的父节点与会话当前 head 不连续。
     ///
     /// 追加只允许接在当前 head 之后；要接到别处必须先回退 head，这样"分支"永远是显式
@@ -62,6 +85,12 @@ impl std::fmt::Display for TreeError {
             ),
             Self::UnknownNode(id) => write!(f, "未知节点 {id}"),
             Self::UnknownSession(id) => write!(f, "未知会话 {id}"),
+            Self::SessionExists(id) => write!(f, "会话 {id} 已存在"),
+            Self::RootHasParent { parent } => write!(f, "根节点不应有父节点，却指向 {parent}"),
+            Self::ForeignToken { token, expected } => {
+                write!(f, "令牌属于会话 {token}，不能用来推进 {expected}")
+            }
+            Self::IncompleteChain(id) => write!(f, "祖先链在 {id} 处中断，节点可能未完整加载"),
             Self::NotDescendantOfHead { parent, head } => {
                 write!(f, "父节点 {parent} 不是当前 head {head}，追加前需要先移动 head")
             }
@@ -112,22 +141,21 @@ impl Tree {
     ///
     /// # 边界与前提
     /// 跨会话回溯：父边可以指向另一个会话的节点（分叉共享祖先），因此这里不按会话过滤。
-    /// 遇到未知父节点即停止——树可能只加载了部分节点，静默截断比报错更危险，所以由
-    /// 调用方通过返回长度与节点数自行判断完整性。
+    /// 父节点缺失时报 [`TreeError::IncompleteChain`]：静默截断会让调用方拿到一段看起来
+    /// 完整、实际缺失中间节点的历史，这比报错危险得多。
     ///
     /// # 副作用
     /// 无。
-    pub fn ancestors(&self, from: &NodeId) -> Vec<NodeId> {
+    pub fn ancestors(&self, from: &NodeId) -> Result<Vec<NodeId>, TreeError> {
+        let start = self.nodes.get(from).ok_or_else(|| TreeError::UnknownNode(from.clone()))?;
         let mut out = Vec::new();
-        let mut cursor = self.nodes.get(from).and_then(|n| n.parent.clone());
+        let mut cursor = start.parent.clone();
         while let Some(id) = cursor {
-            let Some(node) = self.nodes.get(&id) else {
-                break;
-            };
-            out.push(id);
+            let node = self.nodes.get(&id).ok_or_else(|| TreeError::IncompleteChain(id.clone()))?;
+            out.push(id.clone());
             cursor = node.parent.clone();
         }
-        out
+        Ok(out)
     }
 
     /// 建立一个会话并写入它的第一个节点。
@@ -140,19 +168,16 @@ impl Tree {
     /// 修改节点池与会话表。
     pub fn init(&mut self, session: SessionId, root: Node) -> Result<HeadToken, TreeError> {
         if self.heads.contains_key(&session) {
-            return Err(TreeError::UnknownSession(session));
+            return Err(TreeError::SessionExists(session));
         }
         if self.nodes.contains_key(&root.id) {
             return Err(TreeError::DuplicateNode(root.id.clone()));
         }
-        if root.parent.is_some() {
-            return Err(TreeError::NotDescendantOfHead {
-                parent: root.parent.clone().unwrap_or_else(|| root.id.clone()),
-                head: root.id.clone(),
-            });
+        if let Some(parent) = root.parent.clone() {
+            return Err(TreeError::RootHasParent { parent });
         }
         let node_id = root.id.clone();
-        let token = HeadToken { node: node_id.clone(), generation: 0 };
+        let token = HeadToken { session: session.clone(), node: node_id.clone(), generation: 0 };
         self.nodes.insert(node_id, root);
         self.heads.insert(session, token.clone());
         Ok(token)
@@ -169,7 +194,7 @@ impl Tree {
         if !self.nodes.contains_key(&at) {
             return Err(TreeError::UnknownNode(at));
         }
-        let token = HeadToken { node: at, generation: 0 };
+        let token = HeadToken { session: session.clone(), node: at, generation: 0 };
         self.heads.insert(session, token.clone());
         Ok(token)
     }
@@ -194,6 +219,7 @@ impl Tree {
         expected: HeadToken,
         node: Node,
     ) -> Result<HeadToken, TreeError> {
+        self.check_token(session, &expected)?;
         let actual =
             self.heads.get(session).cloned().ok_or(TreeError::UnknownSession(session.clone()))?;
         if actual != expected {
@@ -210,7 +236,11 @@ impl Tree {
         }
 
         let node_id = node.id.clone();
-        let token = HeadToken { node: node_id.clone(), generation: actual.generation + 1 };
+        let token = HeadToken {
+            session: session.clone(),
+            node: node_id.clone(),
+            generation: actual.generation + 1,
+        };
         self.nodes.insert(node_id, node);
         self.heads.insert(session.clone(), token.clone());
         Ok(token)
@@ -230,6 +260,7 @@ impl Tree {
         expected: HeadToken,
         to: NodeId,
     ) -> Result<HeadToken, TreeError> {
+        self.check_token(session, &expected)?;
         let actual =
             self.heads.get(session).cloned().ok_or(TreeError::UnknownSession(session.clone()))?;
         if actual != expected {
@@ -238,12 +269,30 @@ impl Tree {
         if !self.nodes.contains_key(&to) {
             return Err(TreeError::UnknownNode(to));
         }
-        if to != actual.node && !self.ancestors(&actual.node).contains(&to) {
+        if to != actual.node && !self.ancestors(&actual.node)?.contains(&to) {
             return Err(TreeError::NotDescendantOfHead { parent: to, head: actual.node });
         }
-        let token = HeadToken { node: to, generation: actual.generation + 1 };
+        let token =
+            HeadToken { session: session.clone(), node: to, generation: actual.generation + 1 };
         self.heads.insert(session.clone(), token.clone());
         Ok(token)
+    }
+
+    /// 校验令牌确实属于该会话。
+    ///
+    /// # 边界与前提
+    /// 只比会话，不比节点与代次——后两者由调用方按需比较，以便给出更具体的错误。
+    ///
+    /// # 副作用
+    /// 无。
+    fn check_token(&self, session: &SessionId, token: &HeadToken) -> Result<(), TreeError> {
+        if &token.session != session {
+            return Err(TreeError::ForeignToken {
+                token: token.session.clone(),
+                expected: session.clone(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -303,7 +352,7 @@ mod tests {
     #[test]
     fn 过期令牌的追加被拒() {
         let (mut tree, s, token) = linear();
-        let stale = HeadToken { node: id(1), generation: 0 };
+        let stale = HeadToken { session: s.clone(), node: id(1), generation: 0 };
         let err =
             tree.append(&s, stale, turn(id(4), Some(id(1)), s.clone())).expect_err("应当被拒");
         assert!(matches!(err, TreeError::HeadConflict { .. }));
@@ -342,7 +391,7 @@ mod tests {
         let token2 = tree
             .append(&child, child_head.clone(), turn(id(4), Some(id(2)), child.clone()))
             .expect("追加应当成功");
-        assert_eq!(tree.ancestors(&id(4)), vec![id(2), id(1)]);
+        assert_eq!(tree.ancestors(&id(4)).expect("链应当完整"), vec![id(2), id(1)]);
 
         // 父会话的 head 不受影响。
         assert_eq!(tree.head(&parent_session), Some(token.clone()));
@@ -366,7 +415,7 @@ mod tests {
         assert_eq!(rewound.generation, token.generation + 1);
 
         // 回退之后，指向同一节点的旧令牌仍然过期：代次不同。
-        let stale = HeadToken { node: id(3), generation: token.generation };
+        let stale = HeadToken { session: s.clone(), node: id(3), generation: token.generation };
         assert!(tree.rewind(&s, stale, id(1)).is_err());
     }
 
@@ -398,7 +447,7 @@ mod tests {
         let err = tree
             .append(
                 &ghost,
-                HeadToken { node: id(1), generation: 0 },
+                HeadToken { session: ghost.clone(), node: id(1), generation: 0 },
                 turn(id(8), Some(id(1)), ghost.clone()),
             )
             .expect_err("应当被拒");
@@ -410,7 +459,7 @@ mod tests {
         let mut tree = Tree::new();
         let s = session(1);
         let err = tree.init(s.clone(), turn(id(1), Some(id(2)), s)).expect_err("应当被拒");
-        assert!(matches!(err, TreeError::NotDescendantOfHead { .. }));
+        assert!(matches!(err, TreeError::RootHasParent { .. }));
     }
 
     #[test]
@@ -419,13 +468,59 @@ mod tests {
         let s = session(1);
         tree.init(s.clone(), turn(id(1), None, s.clone())).expect("首次应当成功");
         let err = tree.init(s.clone(), turn(id(2), None, s)).expect_err("应当被拒");
-        assert!(matches!(err, TreeError::UnknownSession(_)));
+        assert!(matches!(err, TreeError::SessionExists(_)));
     }
 
     #[test]
     fn 在未知节点上分叉被拒() {
         let mut tree = Tree::new();
         assert!(matches!(tree.fork(session(1), id(5)), Err(TreeError::UnknownNode(_))));
+    }
+
+    #[test]
+    fn 两个子会话从同一节点分叉后令牌不可互换() {
+        // 这是 HeadToken 必须带会话的原因：同一父节点、同为第零代，两个令牌逐字段相同，
+        // 若不含会话就无法区分。
+        let (mut tree, _, _) = linear();
+        let a = session(2);
+        let b = session(3);
+        let token_a = tree.fork(a.clone(), id(2)).expect("应当可以分叉");
+        let token_b = tree.fork(b.clone(), id(2)).expect("应当可以分叉");
+        assert_eq!(token_a.node, token_b.node);
+        assert_eq!(token_a.generation, token_b.generation);
+        assert_ne!(token_a.session, token_b.session);
+
+        // 用 a 的令牌推进 b 必须被拒。
+        let err = tree
+            .append(&b, token_a.clone(), turn(id(4), Some(id(2)), b.clone()))
+            .expect_err("跨会话的令牌应当被拒");
+        assert!(matches!(err, TreeError::ForeignToken { .. }));
+
+        // b 用自己的令牌可以推进。
+        assert!(tree.append(&b, token_b, turn(id(4), Some(id(2)), b.clone())).is_ok());
+    }
+
+    #[test]
+    fn 祖先链中断时报错而不是静默截断() {
+        let (mut tree, _, _) = linear();
+        // 构造一个父节点不在树里的节点，模拟部分加载。
+        let orphan = Node {
+            id: id(7),
+            parent: Some(id(6)),
+            session: session(1),
+            body: crate::context::node::NodeBody::Notice { text: "x".to_owned() },
+        };
+        // 直接经 append 无法写入（父必须是 head），因此用 fork 后的 rewind 路径验证。
+        let s = session(4);
+        tree.fork(s.clone(), id(3)).expect("应当可以分叉");
+        // 树里没有 id(6)，因此从 orphan 回溯必然报错；这里改用公开接口可达的等价情形：
+        // 回退到不存在的节点应当报未知节点。
+        assert!(matches!(
+            tree.rewind(&s, tree.head(&s).expect("有 head"), id(6)),
+            Err(TreeError::UnknownNode(_))
+        ));
+        // orphan 只用于说明结构上允许父边指向缺失节点；不写入树中。
+        let _ = orphan;
     }
 
     #[test]

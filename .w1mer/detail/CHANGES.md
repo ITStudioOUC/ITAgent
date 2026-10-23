@@ -104,3 +104,13 @@ state: active
   句柄，与"大对象外置"不变量冲突；`Node.session` 与跨会话父边的组合语义未写明，分叉共享祖先的
   实现方式留给 04.2 自行决定。`Frame.fixed_layer_fingerprint` 记录生成摘要时刻的固定层，但 0018
   第一节的 `ResolveInput` 不接收它，漂移表也只有两个布尔量，至今没有消费点。
+- 批次 04.2 新增 `crates/ita-kernel/src/context/tree.rs`，内核对外暴露 `Tree`、`HeadToken` 与
+  `TreeError`，版本推进到 0.1.14。契约层面新增 head 的比较并交换：`append` 只允许接在当前 head
+  之后，`rewind` 只能到祖先，`fork` 在任意已有节点上建新会话且不动父会话的 head，分叉不复制节点。
+  四条待闭合的约定：`HeadToken` 只含节点与代次、不含会话，不同会话从同一节点分叉会得到完全相同的
+  令牌，一个子 agent 的令牌可以推进另一个子 agent 的 head；代次只活在内存里，重启后按零起算会与旧
+  令牌重合，比较并交换的依据没有持久化载体；`rewind` 到当前 head 会照样把代次加一，一次没有状态
+  变化的调用即可作废其他持有者的令牌；`ancestors` 遇到未知父节点静默截断且没有截断标记，`rewind`
+  的祖先判定在部分加载时会把合法回退误报为父节点不连续。另有三处错误语义错位：`init` 用
+  `UnknownSession` 表示会话已存在，`init` 用 `NotDescendantOfHead` 表示根节点带父，`append` 对无父
+  节点把自身 id 填进 `parent` 字段。
