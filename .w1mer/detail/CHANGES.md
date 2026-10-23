@@ -95,3 +95,12 @@ state: active
   留下两处缺口与一处弱断言：ADR 0007 要求的 CRLF 终止行在入口层没有用例，`<<"X"` 与未加引号的
   干净正文这两种明示接受的写法没有进入合法对照表；`<<`、`&`、`分隔符`、`无法解析的文本` 四个提示
   关键词对同类型错误恒真，因而只能证明"有提示"，不能证明"提示说对了"。
+- 批次 04.1 新增 `crates/ita-kernel/src/context/{ids,node,mod}.rs`，内核首次对外暴露 `context` 模块，
+  版本推进到 0.1.13。契约层面新增 `NodeId`、`SessionId`、`WorkspaceId`、`CheckpointId` 四个名义
+  标识符（26 字符 Crockford base32，拒 `I/L/O/U`），以及 `Node { id, parent, session, body }` 与
+  `Frame { summary, covers, checkpoint, fixed_layer_fingerprint }` 两个不可变结构。四条待闭合的约定：
+  `NodeBody::Turn` 只有文本、没有消息方向与轮次边界，而 0003 的四段结构要求区分最近三轮；`ToolCall`
+  把调用与结果压进一个节点，与原生工具调用两条消息的形状不一致；工具结果只有预览、没有内容寻址
+  句柄，与"大对象外置"不变量冲突；`Node.session` 与跨会话父边的组合语义未写明，分叉共享祖先的
+  实现方式留给 04.2 自行决定。`Frame.fixed_layer_fingerprint` 记录生成摘要时刻的固定层，但 0018
+  第一节的 `ResolveInput` 不接收它，漂移表也只有两个布尔量，至今没有消费点。

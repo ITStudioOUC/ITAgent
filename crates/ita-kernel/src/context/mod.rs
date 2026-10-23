@@ -11,4 +11,4 @@ pub mod ids;
 pub mod node;
 
 pub use ids::{CheckpointId, IdError, NodeId, SessionId, WorkspaceId};
-pub use node::{Frame, Node, NodeBody};
+pub use node::{BlobRef, Frame, Node, NodeBody, TurnRole};

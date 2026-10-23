@@ -68,6 +68,11 @@ macro_rules! id_type {
                     if !is_crockford(ch) {
                         return Err(IdError::BadChar { offset, ch });
                     }
+                    // ULID 是 48 位时间戳加 80 位随机，恰好 128 位；首位只用到 0 到 7。
+                    // 允许更大的首位会接受任何生成器都不会产生的文本。
+                    if offset == 0 && !matches!(ch, '0'..='7') {
+                        return Err(IdError::BadChar { offset, ch });
+                    }
                 }
                 Ok(Self(text))
             }
@@ -144,6 +149,44 @@ mod tests {
     fn 小写被拒而不是自动转换() {
         let err = NodeId::parse(VALID.to_lowercase()).expect_err("应当被拒");
         assert!(matches!(err, IdError::BadChar { .. }));
+    }
+
+    #[test]
+    fn 首位只能是零到七() {
+        for ch in ['8', '9', 'A', 'Z'] {
+            let mut text = VALID.to_owned();
+            text.replace_range(0..1, &ch.to_string());
+            assert!(NodeId::parse(text).is_err(), "首位 {ch} 应当被拒");
+        }
+        for ch in ['0', '7'] {
+            let mut text = VALID.to_owned();
+            text.replace_range(0..1, &ch.to_string());
+            assert!(NodeId::parse(text).is_ok(), "首位 {ch} 应当被接受");
+        }
+    }
+
+    #[test]
+    fn 数字八和九在非首位是合法的() {
+        let mut text = VALID.to_owned();
+        text.replace_range(25..26, "9");
+        assert!(NodeId::parse(text.clone()).is_ok());
+        text.replace_range(25..26, "8");
+        assert!(NodeId::parse(text).is_ok());
+    }
+
+    #[test]
+    fn 字母表逐字符验证() {
+        for ch in '0'..='9' {
+            let mut text = VALID.to_owned();
+            text.replace_range(25..26, &ch.to_string());
+            assert!(NodeId::parse(text).is_ok(), "{ch} 应当被接受");
+        }
+        for ch in 'A'..='Z' {
+            let mut text = VALID.to_owned();
+            text.replace_range(25..26, &ch.to_string());
+            let expected = !matches!(ch, 'I' | 'L' | 'O' | 'U');
+            assert_eq!(NodeId::parse(text).is_ok(), expected, "{ch} 的接受性不符");
+        }
     }
 
     #[test]
