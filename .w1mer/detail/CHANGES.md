@@ -151,3 +151,11 @@ state: active
   不符、标记后多一句都归入 `Truncated`，提示语因此会误报"被截断"；`is_retryable` 恒真，
   把长度类失败与随机性类失败并成一类；散文上限是调用方入参的裸字节数，0018 参数表没有这一项，
   也不受 `compress_reserve` 约束。
+- 批次 05.2 新增 `crates/ita-kernel/src/context/compress/trigger.rs`，内核对外暴露
+  `TriggerDecision` 与 `decide`，版本推进到 0.1.19。契约层面新增压缩触发的三分支判定：
+  `NotYet` 带当前用量与触发点，`Compress` 带一个额度，`CannotCompress` 带剩余空间与所需预留；
+  预留不足时明确拒绝而不是硬压。三条待闭合的约定：`Compress` 的额度取自 `limit - used`，
+  而 0004 要求压缩调用的输入是整个上下文，二者不是同一量；`headroom` 与预算模块的
+  `remaining_after_trigger` 是同一概念的两个定义；零预留时用量越界仍返回可压缩，
+  得到的额度为零而散文上限至少 4 KiB。另有一条留给后续批次：没有任何一处保证压缩后用量
+  回落到触发点以下。

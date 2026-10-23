@@ -20,8 +20,12 @@ pub enum TriggerDecision {
     },
     /// 可以压缩。
     Compress {
-        /// 压缩调用可用的输入预算。
-        input_budget: u64,
+        /// 触发点之后剩余的空间。
+        ///
+        /// **这不是压缩调用的输入预算**：压缩的输入是整个上下文，其规模约等于 `used`。
+        /// 这个数只用来判断"压缩请求自身会不会超窗"，即 `used + 本次调用开销 <= limit`。
+        /// 把它当成输入预算会让调用方误裁掉十几万上下文。
+        headroom: u64,
     },
     /// 该压但压不了：剩余空间装不下压缩调用。
     ///
@@ -55,12 +59,13 @@ pub fn decide(budget: &Budget, used: u64) -> TriggerDecision {
     }
 
     let headroom = budget.limit.saturating_sub(used);
-    if headroom < budget.compress_reserve {
+    // 剩余空间为零时，即便预留也是零，也没有空间放压缩请求的任何开销。
+    if headroom == 0 || headroom < budget.compress_reserve {
         return TriggerDecision::CannotCompress { headroom, required: budget.compress_reserve };
     }
 
-    // 压缩调用的输入不能超过剩余空间，否则请求自身超窗。
-    TriggerDecision::Compress { input_budget: headroom }
+    // 压缩调用的输入约等于当前用量；剩余空间只需要装下这次调用的额外开销。
+    TriggerDecision::Compress { headroom }
 }
 
 #[cfg(test)]
@@ -82,7 +87,7 @@ mod tests {
     #[test]
     fn 刚好达到触发点时压缩() {
         let decision = decide(&budget(), 170_000);
-        assert_eq!(decision, TriggerDecision::Compress { input_budget: 30_000 });
+        assert_eq!(decision, TriggerDecision::Compress { headroom: 30_000 });
     }
 
     #[test]
@@ -102,15 +107,25 @@ mod tests {
     }
 
     #[test]
-    fn 高阈值让可压缩窗口更窄() {
-        // 同样预留 20000、上限 200000：95% 阈值下触发点 190000，剩余 10000，压不了。
-        let tight = Budget::new(200_000, 950, 20_000, 3, 4096);
-        assert!(tight.is_err(), "构造期就应当拒绝这种组合");
+    fn 高阈值是否可用取决于上限与预留的比例() {
+        // 上限 200000、阈值 95% 时剩余只有 10000，装不下 20000 的预留，构造期就拒绝。
+        assert!(Budget::new(200_000, 950, 20_000, 3, 4096).is_err());
+        // 同样的阈值与预留，上限翻倍后剩余 20000，恰好可以构造。
+        assert!(Budget::new(400_000, 950, 20_000, 3, 4096).is_ok());
     }
 
     #[test]
-    fn 输入预算等于剩余空间() {
-        let decision = decide(&budget(), 175_000);
-        assert_eq!(decision, TriggerDecision::Compress { input_budget: 25_000 });
+    fn 剩余空间随用量下降() {
+        assert_eq!(decide(&budget(), 175_000), TriggerDecision::Compress { headroom: 25_000 });
+        assert_eq!(decide(&budget(), 180_000), TriggerDecision::Compress { headroom: 20_000 });
+    }
+
+    #[test]
+    fn 零预留时越过上限也拒绝压缩() {
+        // 预留为零时构造期不会拦，但用量越过上限后剩余空间为零，压缩请求自身必然超窗。
+        let b = Budget::new(100, 500, 0, 3, 4096).expect("零预留应当可以构造");
+        assert_eq!(decide(&b, 120), TriggerDecision::CannotCompress { headroom: 0, required: 0 });
+        // 剩余空间为零时即便"预留为零"也不该判为可压：没有空间放压缩请求的任何开销。
+        assert!(!matches!(decide(&b, 120), TriggerDecision::Compress { .. }));
     }
 }
