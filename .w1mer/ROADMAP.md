@@ -135,7 +135,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:server -->
 | 06 | 存储层：单 DB schema + CAS + 快照 squash + GC | — | active | 0 |
-| 06.1 | 存储打开、作用域与迁移运行器 | .w1mer/detail/05_plan-06.md | todo | 0 | |
+| 06.1 | 存储打开、作用域与迁移运行器 | .w1mer/detail/05_plan-06.md | done | 0 | 存储层可打开：立即事务与忙等超时、WAL 实测校验、迁移带脚本哈希与旧库检测、工作区注册原子化、作用域只能由已存在工作区构造；245 项测试全绿，版本 0.1.24 |
 | 06.2 | 初始 schema：核心表与快照表 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.3 | 事件追加、seq 分配与预览截断 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.4 | 帧写入与 head 比较并交换 | .w1mer/detail/05_plan-06.md | todo | 0 | |
