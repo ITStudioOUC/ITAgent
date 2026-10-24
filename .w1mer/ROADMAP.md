@@ -19,8 +19,9 @@
 Rows at this level are **epics** (weeks of work, one clear deliverable each).
 Each epic is decomposed into `NN.M` sub-tasks before dispatch; the breakdown,
 acceptance criteria and file boundaries live in the epic's `Doc` column.
-A sub-task is one batch: one acceptance behaviour, ≤8 files, ≤~400 lines,
-one verification pass.
+A sub-task is one batch: one acceptance behaviour, one verification pass, and no
+unrelated changes mixed in. File and line counts are not a criterion — what makes
+a change reviewable is that it has a single purpose.
 
 Sub-task breakdowns for epics past the current frontier are **provisional**.
 The Explorer re-checks the epic's plan against the code as it exists when that
