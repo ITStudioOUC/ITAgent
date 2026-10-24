@@ -1,8 +1,8 @@
 -- 内容寻址存储的元数据与快照清单。
 --
 -- 两条纪律落在这里：
---   * 文件内容不进库：blobs 只有哈希、尺寸与创建时间，正文在文件系统里；引用关系同样不
---     进本表，回收走全局标记-清除加宽限期，不用引用计数。
+--   * 文件内容不进库：blobs 只有哈希、尺寸、创建时间与宽限期起点，正文在文件系统里；引用
+--     关系同样不进本表，回收走全局标记-清除加宽限期，不用引用计数。
 --   * 快照是对齐的依据，不是备份：条目记录"当时这个路径是什么"，墓碑记录"当时这里没有
 --     东西"，两者缺一不可。
 --
@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     parent_id     TEXT REFERENCES snapshots(id),
     kind          TEXT NOT NULL CHECK (kind IN ('baseline', 'incremental')),
     -- 重定基线不可逆，留痕三列同进同出且只对基线成立：谁发起、为什么、由谁人工确认。
-    -- 确认者为空即没有人工确认，调用方按默认禁止处理。
+    -- 为 NULL 才算没有人工确认，写入方不得用空串代替——空串会绕过只判 NULL 的 CHECK，
+    -- 被读成"有人确认过"。因此三列非空时还要求非空串。
     rebased_by           TEXT,
     rebase_reason        TEXT,
     rebase_confirmed_by  TEXT,
@@ -43,6 +44,9 @@ CREATE TABLE IF NOT EXISTS snapshots (
     CONSTRAINT rebase_trail_is_complete CHECK (
         (rebased_by IS NULL) = (rebase_reason IS NULL)
         AND (rebased_by IS NULL) = (rebase_confirmed_by IS NULL)
+        AND (rebased_by IS NULL OR rebased_by <> '')
+        AND (rebase_reason IS NULL OR rebase_reason <> '')
+        AND (rebase_confirmed_by IS NULL OR rebase_confirmed_by <> '')
     ),
     CONSTRAINT rebase_trail_only_on_baseline CHECK (rebased_by IS NULL OR kind = 'baseline')
 );
@@ -53,14 +57,19 @@ CREATE INDEX IF NOT EXISTS snapshots_by_parent ON snapshots(parent_id);
 
 -- 快照条目。kind 三值：
 --   file       当时存在，hash 与 size 必填；content_stored 表示正文是否已进内容存储
---   dir        当时存在且是目录，没有哈希，也没有内容标记
---   tombstone  当时被删除，没有哈希，也没有内容标记
+--   dir        当时存在且是目录，没有哈希、尺寸与内容标记
+--   tombstone  当时被删除，五列全空——那里什么都没有
 -- 超过大小阈值的文件仍是 file，但 content_stored = 0，只保留 hash、size 与 mtime：它们的
 -- 内容不在快照覆盖范围内，回滚时只报告、不删除也不覆盖。
 --
 -- content_stored 不给默认值：默认值会让"写墓碑时忘了带标记"落成一行自洽的坏数据。现在
 -- file 必须显式给出 0 或 1，dir 与墓碑则必须留空——留空表示这条标记不适用，而 0 表示
 -- "当时存在但内容未存"，那是超阈值文件的语义，两者不能混用。
+--
+-- mode 与 mtime 对 dir 不判空：目录确实有权限位与修改时间，回滚要恢复目录权限时它们有用，
+-- 而 CHECK 一旦定形就改不了（ALTER TABLE 不能给既有表换约束），现在判空等于永久丢掉这两
+-- 个事实。size 则不同——它在本表里表示文件正文长度，目录没有这个量，写进来就是坏数据。
+-- 墓碑连 mode 与 mtime 一起判空，因为它表示"当时这里没有东西"，任何字段有值都自相矛盾。
 CREATE TABLE IF NOT EXISTS snapshot_entries (
     snapshot_id     TEXT NOT NULL REFERENCES snapshots(id),
     path            TEXT NOT NULL,
@@ -72,11 +81,14 @@ CREATE TABLE IF NOT EXISTS snapshot_entries (
     content_stored  INTEGER,
     PRIMARY KEY (snapshot_id, path),
     -- 每个分支都显式写 IS NULL / IS NOT NULL：CHECK 表达式求值为 NULL 时算通过，只用
-    -- `content_stored IN (0, 1)` 会让漏写的标记（NULL）静默过关。
+    -- `content_stored IN (0, 1)` 会让漏写的标记（NULL）静默过关。负尺寸同样要拦：它是
+    -- 0017 要求的"标注尺寸"，负值会让残留清单与对比失去意义。
     CONSTRAINT entry_shape_matches_kind CHECK (
-        (kind = 'file' AND hash IS NOT NULL AND size IS NOT NULL
+        (kind = 'file' AND hash IS NOT NULL AND size IS NOT NULL AND size >= 0
             AND content_stored IS NOT NULL AND content_stored IN (0, 1))
-        OR (kind IN ('dir', 'tombstone') AND hash IS NULL AND content_stored IS NULL)
+        OR (kind = 'dir' AND hash IS NULL AND size IS NULL AND content_stored IS NULL)
+        OR (kind = 'tombstone' AND hash IS NULL AND size IS NULL AND mode IS NULL
+            AND mtime IS NULL AND content_stored IS NULL)
     )
 );
 

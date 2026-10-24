@@ -185,6 +185,11 @@ fn snapshot_kind_is_limited_to_baseline_and_incremental() {
 }
 
 /// 条目的 kind 只允许文件、目录与墓碑三种。
+///
+/// 这道取值域由两处共同兜住：`kind` 上的单列 CHECK，以及形态 CHECK 的三个分支——三者之外
+/// 的 kind 全都不匹配任何分支。因此本用例无论删掉哪一处都会通过，它守的是"未知类型写不进
+/// 库"这个结果，而不是某一处 CHECK 的存在；单列 CHECK 只是让错误消息直接指向 kind 的冗余
+/// 保险，删掉它不会放开任何非法输入。
 #[test]
 fn entry_kind_is_limited_to_file_dir_and_tombstone() {
     let store = store_with_workspace();
@@ -197,6 +202,49 @@ fn entry_kind_is_limited_to_file_dir_and_tombstone() {
         rusqlite::params![SNAPSHOT],
     );
     assert!(result.is_err(), "未知的条目类型应当被拒");
+}
+
+/// 目录与墓碑不得携带不属于自己的字段，文件尺寸不得为负。
+///
+/// 目录与墓碑的尺寸、墓碑的权限位与修改时间都是"那里没有东西"的反证。上层的清单写入若对
+/// 每个路径统一取一次 `lstat` 再整行填充，这些列会自然带上值，CHECK 若不管就会落成"墓碑却
+/// 有 64 字节"这类行，而跨列约束日后再也补不上。目录的权限位与修改时间是目录真实拥有的
+/// 事实，因此不判空。
+#[test]
+fn entry_shape_rejects_fields_that_do_not_belong_to_kind() {
+    let store = store_with_workspace();
+    let conn = store.conn_for_test();
+    insert_baseline(conn, SNAPSHOT);
+
+    let insert = |path: &str,
+                  kind: &str,
+                  hash: Option<&str>,
+                  mode: Option<i64>,
+                  size: Option<i64>,
+                  mtime: Option<i64>,
+                  stored: Option<i64>| {
+        conn.execute(
+            "INSERT INTO snapshot_entries
+                 (snapshot_id, path, kind, hash, mode, size, mtime, content_stored)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![SNAPSHOT, path, kind, hash, mode, size, mtime, stored],
+        )
+    };
+
+    let err = insert("dir", "dir", None, None, Some(64), None, None).expect_err("目录不应带尺寸");
+    assert!(err.to_string().contains("CHECK"), "应当由 CHECK 拦住：{err}");
+    insert("dir", "dir", None, Some(0o755), None, Some(1_700_000_000_000), None)
+        .expect("目录带着权限位与修改时间应当可插");
+
+    insert("dead.rs", "tombstone", None, None, Some(64), None, None).expect_err("墓碑不应带尺寸");
+    insert("dead.rs", "tombstone", None, Some(0o644), None, None, None)
+        .expect_err("墓碑不应带权限位");
+    insert("dead.rs", "tombstone", None, None, None, Some(1_700_000_000_000), None)
+        .expect_err("墓碑不应带修改时间");
+    insert("dead.rs", "tombstone", None, None, None, None, None).expect("全空的墓碑应当可插");
+
+    insert("neg.bin", "file", Some("h"), None, Some(-1), None, Some(0))
+        .expect_err("文件尺寸不能为负");
 }
 
 /// 墓碑与目录不得携带内容标记或哈希，文件则必须把两者都给出。
@@ -232,6 +280,9 @@ fn tombstone_and_content_are_mutually_exclusive() {
 }
 
 /// 重定基线只对基线快照成立，且发起人、原因、人工确认三者同进同出。
+///
+/// 留痕三列都非空才算有留痕，空串不算：只判 NULL 的 CHECK 会放过 `''`，让"没有人确认"被
+/// 读成"有人确认过"，而重定基线不可逆，这个混淆没有挽回余地。
 #[test]
 fn rebase_trail_only_allows_baseline_with_full_trail() {
     let store = store_with_workspace();
@@ -253,6 +304,13 @@ fn rebase_trail_only_allows_baseline_with_full_trail() {
         .expect_err("缺少人工确认的留痕应当被拒");
     insert(SNAPSHOT_CHILD, "baseline", Some("agent"), None, Some("user"))
         .expect_err("缺少原因的留痕应当被拒");
+
+    insert(SNAPSHOT_CHILD, "baseline", Some("agent"), Some("压缩后收起旧回滚点"), Some(""))
+        .expect_err("空串的确认者不算人工确认");
+    insert(SNAPSHOT_CHILD, "baseline", Some(""), Some("压缩后收起旧回滚点"), Some("user"))
+        .expect_err("空串的发起人应当被拒");
+    insert(SNAPSHOT_CHILD, "baseline", Some("agent"), Some(""), Some("user"))
+        .expect_err("空串的原因应当被拒");
 
     insert(SNAPSHOT_CHILD, "baseline", Some("agent"), Some("压缩后收起旧回滚点"), Some("user"))
         .expect("完整的重定基线留痕应当可插");
