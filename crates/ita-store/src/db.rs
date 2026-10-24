@@ -211,6 +211,18 @@ impl Store {
     pub(crate) fn conn(&self) -> &Connection {
         &self.conn
     }
+
+    /// 供集成测试检查表结构的连接。
+    ///
+    /// # 边界与前提
+    /// 只在测试里可用（`#[doc(hidden)]` + 测试专用名字），业务代码不应调用。
+    ///
+    /// # 副作用
+    /// 取决于调用方。
+    #[doc(hidden)]
+    pub fn conn_for_test(&self) -> &Connection {
+        &self.conn
+    }
 }
 
 /// 当前时间（epoch 毫秒）。
@@ -245,7 +257,7 @@ mod tests {
     #[test]
     fn 打开时跑完迁移() {
         let store = Store::open_in_memory().expect("应当可以打开");
-        assert_eq!(store.schema_version().expect("应当可读"), 1);
+        assert_eq!(store.schema_version().expect("应当可读"), 2);
     }
 
     #[test]

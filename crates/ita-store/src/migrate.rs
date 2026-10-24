@@ -82,8 +82,10 @@ impl From<rusqlite::Error> for MigrateError {
 /// 全部迁移，按版本升序。
 ///
 /// 新增迁移只能追加到末尾，且版本号必须紧接上一个。
-pub const MIGRATIONS: &[Migration] =
-    &[Migration { version: 1, name: "core", sql: include_str!("../migrations/0001_core.sql") }];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration { version: 1, name: "core", sql: include_str!("../migrations/0001_core.sql") },
+    Migration { version: 2, name: "content", sql: include_str!("../migrations/0002_content.sql") },
+];
 
 /// 执行全部待执行的迁移。
 ///
@@ -211,8 +213,8 @@ mod tests {
     fn 首次迁移建表并记录版本() {
         let mut conn = memory();
         let version = run(&mut conn).expect("迁移应当成功");
-        assert_eq!(version, 1);
-        assert_eq!(current_version(&conn).expect("应当可读"), 1);
+        assert_eq!(version, 2);
+        assert_eq!(current_version(&conn).expect("应当可读"), 2);
     }
 
     #[test]
@@ -220,12 +222,12 @@ mod tests {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         let version = run(&mut conn).expect("重复执行应当成功");
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
 
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM schema_version", [], |row| row.get(0))
             .expect("应当可读");
-        assert_eq!(count, 1, "版本行不应重复");
+        assert_eq!(count, 2, "版本行不应重复");
     }
 
     #[test]
@@ -260,12 +262,12 @@ mod tests {
         run(&mut conn).expect("首次应当成功");
         conn.execute(
             "INSERT INTO schema_version (version, name, applied_at, script_hash)
-             VALUES (2, 'future', 0, NULL)",
+             VALUES (3, 'future', 0, NULL)",
             [],
         )
         .expect("应当可插");
         let err = run(&mut conn).expect_err("应当被拒");
-        assert!(matches!(err, MigrateError::DatabaseNewer { database: 2, supported: 1 }));
+        assert!(matches!(err, MigrateError::DatabaseNewer { database: 3, supported: 2 }));
     }
 
     #[test]
@@ -285,5 +287,6 @@ mod tests {
         run(&mut conn).expect("首次应当成功");
         // 表已存在时再跑一遍迁移 SQL 不应失败（脚本自带 IF NOT EXISTS）。
         conn.execute_batch(MIGRATIONS[0].sql).expect("重复执行 SQL 应当成功");
+        conn.execute_batch(MIGRATIONS[1].sql).expect("重复执行 SQL 应当成功");
     }
 }
