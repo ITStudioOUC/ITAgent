@@ -139,6 +139,8 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 06.1 | 存储打开、作用域与迁移运行器 | .w1mer/detail/05_plan-06.md | done | 0 | 存储层可打开：立即事务与忙等超时、WAL 实测校验、迁移带脚本哈希与旧库检测、工作区注册原子化、作用域只能由已存在工作区构造；245 项测试全绿，版本 0.1.24 |
 | 06.2 | 初始 schema：核心表与快照表 | .w1mer/detail/05_plan-06.md | done | 0 | 初始表结构落地：四张内容表与工作区外键、快照序号唯一；约束在补审批次定形，259 项测试全绿，版本 0.1.26 |
 | 06.2.1 | 处置初始表结构审查的八条问题 | .w1mer/detail/05_plan-06.md | done | 0 | 八条处置全部落地：两张表的 kind 取值域、条目形态互斥 CHECK、重定基线留痕三列、两条索引、宽限期起点列、注释修订、squash 重挂子边的约定；净增九条拒绝用例，259 项测试全绿，版本 0.1.26 |
+| 06.2.1.1 | 补齐条目形态约束并修正文档矛盾 | .w1mer/detail/05_plan-06.md | done | 0 | 条目形态约束补齐：目录与墓碑各自单支，目录保留权限位与修改时间而尺寸判空，墓碑五列全空，文件尺寸非负；重定基线留痕拒绝空串；kind 用例说明改为由形态约束兜底；detail/20 与外键裁决的相反结论就地标注 |
+| 06.2.2 | 测试用例命名英文化与命名规范入册 | .w1mer/detail/20_测试函数名英文化与初始表结构约束定形的执行计划.md | todo | 0 | |
 | 06.3 | 事件追加、seq 分配与预览截断 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.4 | 帧写入与 head 比较并交换 | .w1mer/detail/05_plan-06.md | todo | 0 | |
 | 06.5 | CAS 写入、去重与原子改名 | .w1mer/detail/05_plan-06.md | todo | 0 | |
@@ -157,6 +159,8 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 08.3 | 权威与遥测分流、有界队列与背压 | .w1mer/detail/07_plan-08.md | todo | 0 | |
 | 08.4 | group commit：5 毫秒或 256 条 | .w1mer/detail/07_plan-08.md | todo | 0 | |
 | 08.5 | 批量读 load_context 单次往返 | .w1mer/detail/07_plan-08.md | todo | 0 | |
+
+
 
 
 

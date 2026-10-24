@@ -1,9 +1,10 @@
 -- 核心表：工作区、会话、节点。
 --
 -- 三条约束写在这里而不是代码里，因为它们是数据的性质而不是某一处调用的检查：
---   * 业务表默认带 workspace_id，跨工作区的行永远不会被同一条查询命中。内容寻址存储的两
---     张表是明确的例外：blobs 按内容哈希全局去重，跨工作区共享同一份；快照条目不带工作区
---     列，按快照 id join 回 snapshots 才能确定归属。
+--   * 业务表默认带 workspace_id，跨工作区的行永远不会被同一条查询命中。例外只有两张表：
+--     blobs 按内容哈希全局去重，跨工作区共享同一份，因此不带工作区列；snapshot_entries
+--     同样不带工作区列，按快照 id join 回 snapshots 才能确定归属。快照清单里的另外两张
+--     表（snapshots 与 read_set）都带 workspace_id，不走这两条例外。
 --   * 节点不可变：没有 UPDATE 路径，只有 INSERT。
 --   * head 的比较并交换靠 (session_id, head_node, head_generation) 三者一起匹配。
 
