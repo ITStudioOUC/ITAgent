@@ -205,3 +205,12 @@ state: active
   失败被静默忽略且不校验实际模式；`WorkspaceScope` 只证明工作区存在、不证明来自连接，
   `create_workspace` 与 `workspace_count` 是不带作用域的公开入口；`nodes` 的
   `workspace_id` 与 `session_id` 没有同工作区约束，`events` 的会话与节点列没有外键。
+- 批次 06.2 新增 `crates/ita-store/migrations/0002_content.sql` 与集成测试 `tests/schema.rs`，
+  存储层首次有了内容寻址与快照的表形状，`Store` 新增仅供测试使用的 `conn_for_test`，迁移版本
+  推进到 2。契约层面新增四条形状：blob 只存哈希、尺寸与创建时间，正文在文件系统里；快照按
+  （工作区, 序号）唯一，`kind` 区分基线与增量；快照条目以（快照, 路径）为主键，`kind` 取
+  file、dir、tombstone，超阈值文件以 `content_stored = 0` 表达；读集以（工作区, 路径, 会话）
+  为主键。审查判为 issues 的六条：整份迁移没有一个 CHECK，`content_stored` 的默认值让
+  "墓碑且已存内容"成为默认路径；重定基线只有两个可空列且无约束；`snapshots.parent_id` 是无
+  动作的自引用外键，squash 删除父快照会被拦住，该列也没有索引；blobs 缺宽限期起点字段；
+  文件头注释仍写着引用计数；用例未覆盖条目与读集的外键以及 kind 取值域。
