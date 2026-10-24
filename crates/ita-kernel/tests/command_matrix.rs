@@ -223,8 +223,9 @@ fn cases() -> Vec<Case> {
     ]
 }
 
+/// 表驱动逐条比对错误类别、诊断关键词与可重试标记，任何一条不符都列进失败清单。
 #[test]
-fn 失败矩阵逐条命中() {
+fn failure_matrix_cases_each_hit_expected_error() {
     let mut failures = Vec::new();
 
     for case in cases() {
@@ -261,8 +262,9 @@ fn 失败矩阵逐条命中() {
     assert!(failures.is_empty(), "失败矩阵有 {} 条不符：\n{}", failures.len(), failures.join("\n"));
 }
 
+/// 拒绝要么给出可定位的字节偏移，要么属于整体性错误，两者皆无的诊断对模型无用。
 #[test]
-fn 每条拒绝都带可定位的偏移或明确说明() {
+fn every_rejection_has_offset_or_is_whole_input() {
     for case in cases() {
         let err = match parse(case.input, DEFAULT_MAX_BODY) {
             Ok(_) => panic!("{}：用例表里的输入应当被拒", case.name),
@@ -285,15 +287,17 @@ fn 每条拒绝都带可定位的偏移或明确说明() {
     }
 }
 
+/// 公共入口上同样接受空正文，且收下的正文确实是空串。
 #[test]
-fn 空正文被接受且正文为空() {
+fn empty_body_is_accepted_at_public_entry() {
     let cmd = parse("ita edit <<'X'\nX", DEFAULT_MAX_BODY).expect("应当解析成功");
     let doc = cmd.heredoc.expect("应当有正文");
     assert_eq!(doc.body, "");
 }
 
+/// 上限检查在公共入口也生效，诊断里要出现上限字样。
 #[test]
-fn 正文超上限在公共入口上被拒() {
+fn body_over_limit_is_rejected_at_public_entry() {
     let big = "x".repeat(DEFAULT_MAX_BODY + 1);
     let input = format!("ita edit <<'X'\n{big}\nX");
     let err = parse(&input, DEFAULT_MAX_BODY).expect_err("应当被拒");
@@ -301,8 +305,9 @@ fn 正文超上限在公共入口上被拒() {
     assert!(err.hint().contains("上限"));
 }
 
+/// 合法形态一律不得被文法误伤：这条是失败矩阵的反向守卫，收紧任一规则都要先过它。
 #[test]
-fn 合法命令不被误拒() {
+fn legal_commands_are_not_rejected() {
     // 与失败矩阵互为对照：这些必须全部通过，否则规则收得太紧。
     let legal = [
         "ita edit a.rs",

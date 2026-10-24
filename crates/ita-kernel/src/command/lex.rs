@@ -286,8 +286,9 @@ mod tests {
         scan(input).expect("应当解析成功").into_iter().map(|t| t.kind).collect()
     }
 
+    /// 不加引号的普通命令行按空白切词，每个词就是一个记号。
     #[test]
-    fn 普通命令切成命令名与参数() {
+    fn plain_command_splits_into_words() {
         assert_eq!(
             kinds("ita edit a.rs"),
             vec![
@@ -298,8 +299,9 @@ mod tests {
         );
     }
 
+    /// 双引号内的空格属于词本身，不能当作词与词的分隔。
     #[test]
-    fn 双引号内保留空格() {
+    fn double_quotes_preserve_spaces() {
         assert_eq!(
             kinds("ita edit \"a b.rs\""),
             vec![
@@ -310,8 +312,9 @@ mod tests {
         );
     }
 
+    /// 单引号是字面形式，反斜杠原样保留，不做转义翻译。
     #[test]
-    fn 单引号内不解释转义() {
+    fn single_quotes_do_not_interpret_escapes() {
         assert_eq!(
             kinds("ita echo 'a\\nb'"),
             vec![
@@ -322,8 +325,9 @@ mod tests {
         );
     }
 
+    /// 守的是与真实 shell 的转义语义对齐：多解释一个转义，同一条命令在两边写出的字节就不同。
     #[test]
-    fn 双引号内只解释_bash_也解释的四个转义() {
+    fn double_quotes_interpret_only_the_four_bash_escapes() {
         // `\n` 在 bash 的双引号里是字面两个字符，这里必须保持一致，否则同一条命令在两边
         // 会写出不同的字节，"可粘贴复现"就不成立。
         assert_eq!(
@@ -345,21 +349,24 @@ mod tests {
         );
     }
 
+    /// 变量、花括号与波浪号展开都在权限预检之外发生，一律整体拒绝。
     #[test]
-    fn 变量与括号展开被拒() {
+    fn variable_and_brace_expansion_are_rejected() {
         for input in ["ita edit $HOME/a", "ita edit {a,b}.rs", "ita edit ~/a"] {
             assert!(scan(input).is_err(), "{input} 应当被拒");
         }
     }
 
+    /// 方括号表达式在 shell 里是通配写法，与星号、问号同样按通配符拒绝。
     #[test]
-    fn 方括号按通配符拒绝() {
+    fn bracket_expression_is_rejected_as_glob() {
         let err = scan("ita edit [ab].rs").expect_err("应当被拒");
         assert!(matches!(err, ParseError::GlobNotAllowed { .. }));
     }
 
+    /// 一对引号产生一个真实存在的空参数，不能因为长度为 0 就被丢弃。
     #[test]
-    fn 空参数保留为零长词() {
+    fn empty_argument_is_kept_as_zero_length_word() {
         assert_eq!(
             kinds("ita echo \"\""),
             vec![
@@ -370,8 +377,9 @@ mod tests {
         );
     }
 
+    /// 多字节参数按字符边界切分，不能从 UTF-8 序列中间切开。
     #[test]
-    fn utf8_参数按字符边界切分() {
+    fn utf8_argument_splits_on_char_boundaries() {
         assert_eq!(
             kinds("ita echo 中文"),
             vec![
@@ -382,8 +390,9 @@ mod tests {
         );
     }
 
+    /// 词中间的回车只是普通字节，只有换行才结束扫描。
     #[test]
-    fn 词中间的回车按普通字符保留() {
+    fn carriage_return_inside_word_is_kept_literally() {
         assert_eq!(
             kinds("ita echo a\rb"),
             vec![
@@ -394,8 +403,9 @@ mod tests {
         );
     }
 
+    /// 算符即使紧贴相邻的词也单独成记号，装配时才能把目标与参数分开。
     #[test]
-    fn 重定向算符与词分开() {
+    fn redirect_operator_is_its_own_token() {
         assert_eq!(
             kinds("ita edit a.rs >> out.txt"),
             vec![
@@ -408,8 +418,9 @@ mod tests {
         );
     }
 
+    /// 算符两侧不加空格也要正确切分，模型写命令时经常省略空格。
     #[test]
-    fn 相邻的算符无需空格() {
+    fn redirect_operator_needs_no_surrounding_space() {
         assert_eq!(
             kinds("ita edit a.rs>out.txt"),
             vec![
@@ -422,8 +433,9 @@ mod tests {
         );
     }
 
+    /// 连续两个小于号是一个整体记号，拆成两个会把 heredoc 起始吞掉。
     #[test]
-    fn 双小于号单独成为记号() {
+    fn double_less_than_becomes_heredoc_start() {
         assert_eq!(
             kinds("ita edit <<'X'"),
             vec![
@@ -435,37 +447,42 @@ mod tests {
         );
     }
 
+    /// 命令替换会在权限预检之外执行命令，必须拒绝且不可重试。
     #[test]
-    fn 命令替换被拒() {
+    fn command_substitution_is_rejected() {
         for input in ["ita $(rm -rf /)", "ita `rm`", "ita echo \"$(rm)\""] {
             let err = scan(input).expect_err("应当被拒");
             assert!(!err.is_retryable());
         }
     }
 
+    /// 逻辑与、分号与后台符都不在单命令文法内，出现即拒绝。
     #[test]
-    fn 逻辑连接与后台被拒() {
+    fn logical_chaining_and_background_are_rejected() {
         for input in ["ita a && ita b", "ita a; ita b", "ita a &"] {
             assert!(scan(input).is_err(), "{input} 应当被拒");
         }
     }
 
+    /// 管道被拒时提示要说明这是版本一的范围限制，模型才知道改写重试没有意义。
     #[test]
-    fn 管道被拒并说明是版本一限制() {
+    fn pipe_is_rejected_and_hint_names_version_limit() {
         let err = scan("ita a | ita b").expect_err("应当被拒");
         assert!(err.hint().contains("版本一"), "提示应当说明这是版本限制");
     }
 
+    /// 未加引号的星号与问号是通配符，展开结果不可预测，必须拒绝。
     #[test]
-    fn 未加引号的通配符被拒() {
+    fn unquoted_glob_is_rejected() {
         for input in ["ita edit *.rs", "ita edit a?.rs"] {
             let err = scan(input).expect_err("应当被拒");
             assert!(matches!(err, ParseError::GlobNotAllowed { .. }));
         }
     }
 
+    /// 引号内的星号是普通字符，合法且必须原样保留在词里。
     #[test]
-    fn 引号内的通配符是字面值() {
+    fn quoted_glob_is_literal() {
         assert_eq!(
             kinds("ita edit \"*.rs\""),
             vec![
@@ -476,30 +493,34 @@ mod tests {
         );
     }
 
+    /// herestring 与剥制表符的 heredoc 都是版本一不支持的形式，提示要分别指向可用写法与不支持的原因。
     #[test]
-    fn herestring_与剥制表符的_heredoc_被拒() {
+    fn herestring_and_tab_stripping_heredoc_are_rejected() {
         let err = scan("ita edit <<<EOF").expect_err("应当被拒");
         assert!(err.hint().contains("<<"));
         let err = scan("ita edit <<-EOF").expect_err("应当被拒");
         assert!(err.hint().contains("<<-") || err.hint().contains("制表符"));
     }
 
+    /// 引号没有闭合时给出开引号所在的字节偏移，模型才能定位到出错处。
     #[test]
-    fn 未闭合的引号给出位置() {
+    fn unterminated_quote_reports_its_offset() {
         let err = scan("ita edit 'unclosed").expect_err("应当被拒");
         assert_eq!(err.offset(), Some(9));
     }
 
+    /// 扫描到换行就结束，换行之后的内容不属于本条命令。
     #[test]
-    fn 换行结束扫描() {
+    fn newline_ends_the_scan() {
         assert_eq!(
             kinds("ita edit\nextra"),
             vec![TokenKind::Word("ita".to_owned()), TokenKind::Word("edit".to_owned()),]
         );
     }
 
+    /// 只有空白字符的输入得到空记号序列，而不是一个空词。
     #[test]
-    fn 空输入得到空序列() {
+    fn blank_input_yields_empty_tokens() {
         assert!(kinds("   ").is_empty());
     }
 }

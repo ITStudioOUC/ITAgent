@@ -176,8 +176,9 @@ mod tests {
         Redirect { kind, target: target.to_owned() }
     }
 
+    /// 只有输入重定向计入读集，写与追加不进入读路径，否则读集会虚高。
     #[test]
-    fn 读路径只来自输入重定向() {
+    fn read_paths_come_only_from_input_redirects() {
         let c = cmd(
             &["edit", "a.txt"],
             vec![redirect(RedirectKind::Read, "in.txt"), redirect(RedirectKind::Write, "out.txt")],
@@ -185,8 +186,9 @@ mod tests {
         assert_eq!(c.read_paths(), vec!["in.txt"]);
     }
 
+    /// 写集取截断与追加两类并去重排序，输入重定向是读，不算写。
     #[test]
-    fn 写路径含截断与追加但不含读取() {
+    fn write_paths_include_truncate_and_append_but_not_read() {
         let c = cmd(
             &[],
             vec![
@@ -198,8 +200,9 @@ mod tests {
         assert_eq!(c.write_paths(), vec!["a.txt", "b.txt"]);
     }
 
+    /// 同一路径写两次只保留一份，结果按字典序排列，保证租约申请顺序确定。
     #[test]
-    fn 重复路径只保留一份且顺序稳定() {
+    fn duplicate_paths_appear_once_in_stable_order() {
         let c = cmd(
             &[],
             vec![
@@ -211,43 +214,49 @@ mod tests {
         assert_eq!(c.write_paths(), vec!["a.txt", "z.txt"]);
     }
 
+    /// 没有重定向时读集与写集都为空，调用方不必特判返回 `None`。
     #[test]
-    fn 无重定向时两组路径都为空() {
+    fn command_without_redirects_has_empty_path_sets() {
         let c = cmd(&["status"], vec![]);
         assert!(c.read_paths().is_empty());
         assert!(c.write_paths().is_empty());
     }
 
+    /// 渲染结果要能原样粘回 shell 执行，含空格的参数必须带引号。
     #[test]
-    fn 输出可直接粘贴执行() {
+    fn rendered_command_is_pasteable() {
         let c = cmd(&["edit", "a b.txt"], vec![redirect(RedirectKind::Write, "out.txt")]);
         assert_eq!(c.to_string(), "ita edit 'a b.txt' > out.txt");
     }
 
+    /// 参数本身含单引号时改用双引号包裹，否则内外引号会互相打断。
     #[test]
-    fn 含单引号的参数改用双引号() {
+    fn argument_with_single_quote_is_wrapped_in_double_quotes() {
         let c = cmd(&["it's"], vec![]);
         assert_eq!(c.to_string(), "ita \"it's\"");
     }
 
+    /// 带正文的命令渲染后包含分隔符与正文，粘贴即得完整可执行命令。
     #[test]
-    fn 带正文的命令粘贴后是完整命令() {
+    fn command_with_heredoc_renders_complete_text() {
         let mut c = cmd(&["edit", "a.rs"], vec![]);
         c.heredoc =
             Some(HereDoc { delimiter: "ITA_EOF".to_owned(), body: "fn main() {}\n".to_owned() });
         assert_eq!(c.to_string(), "ita edit a.rs <<'ITA_EOF'\nfn main() {}\nITA_EOF");
     }
 
+    /// 正文末尾没有换行时渲染补一个，否则终止行会粘在正文最后一行上。
     #[test]
-    fn 正文缺少结尾换行时补一个() {
+    fn body_without_trailing_newline_gets_one_appended() {
         let mut c = cmd(&["edit"], vec![]);
         c.heredoc =
             Some(HereDoc { delimiter: "ITA_EOF".to_owned(), body: "no newline".to_owned() });
         assert_eq!(c.to_string(), "ita edit <<'ITA_EOF'\nno newline\nITA_EOF");
     }
 
+    /// 追加与读取方向不同，可以同时出现，两组路径各自独立计算。
     #[test]
-    fn 追加写与读取可以同时存在() {
+    fn append_and_read_redirects_coexist() {
         let c = cmd(
             &[],
             vec![redirect(RedirectKind::Append, "log.txt"), redirect(RedirectKind::Read, "in.txt")],

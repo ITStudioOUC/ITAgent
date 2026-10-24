@@ -199,34 +199,39 @@ mod tests {
         scan_heredoc(input, DEFAULT_MAX_BODY).expect("应当解析成功")
     }
 
+    /// 带引号的分隔符正常收正文，终止行本身不进入正文。
     #[test]
-    fn 基本正文与终止行() {
+    fn body_and_terminator_are_captured() {
         let doc = ok("'ITA_EOF'\nfn main() {}\nITA_EOF\n");
         assert_eq!(doc.delimiter, "ITA_EOF");
         assert_eq!(doc.body, "fn main() {}\n");
     }
 
+    /// 单引号与双引号包裹在真实 shell 里都表示不展开，行为必须一致。
     #[test]
-    fn 双引号包裹与单引号等价() {
+    fn double_quoted_delimiter_behaves_like_single_quoted() {
         let doc = ok("\"ITA_EOF\"\nbody\nITA_EOF");
         assert_eq!(doc.body, "body\n");
     }
 
+    /// 正文不含展开字符时，未加引号的分隔符与真实 shell 行为等价，可以接受。
     #[test]
-    fn 未加引号且正文无展开字符时接受() {
+    fn unquoted_delimiter_with_plain_body_is_accepted() {
         let doc = ok("ITA_EOF\nplain body\nITA_EOF");
         assert_eq!(doc.body, "plain body\n");
     }
 
+    /// 真实 shell 会展开正文里的美元符号，这里不支持展开，因此拒绝并提示改用引号形式。
     #[test]
-    fn 未加引号且正文含美元符号时拒绝() {
+    fn unquoted_delimiter_with_dollar_is_rejected() {
         let err =
             scan_heredoc("ITA_EOF\ncost $5\nITA_EOF", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(err.hint().contains("<<'"));
     }
 
+    /// 正文没等到分隔符时，诊断要报出它在等的那个分隔符，模型才知道截断在哪。
     #[test]
-    fn 未终止时报出分隔符() {
+    fn unterminated_heredoc_reports_the_delimiter() {
         let err = scan_heredoc("'ITA_EOF'\nbody without terminator\n", DEFAULT_MAX_BODY)
             .expect_err("应当被拒");
         assert!(
@@ -234,88 +239,101 @@ mod tests {
         );
     }
 
+    /// 终止行之后还有非空白文本，说明正文被截断或模型追加了说明，整条拒绝。
     #[test]
-    fn 分隔符之后有残留文本时拒绝() {
+    fn trailing_text_after_terminator_is_rejected() {
         let err = scan_heredoc("'ITA_EOF'\nbody\nITA_EOF\ntrailing", DEFAULT_MAX_BODY)
             .expect_err("应当被拒");
         assert!(matches!(err, ParseError::TrailingText { .. }));
     }
 
+    /// 终止行之后的换行与空白不构成残留文本，可以接受。
     #[test]
-    fn 分隔符之后只有空白时接受() {
+    fn whitespace_after_terminator_is_accepted() {
         let doc = ok("'ITA_EOF'\nbody\nITA_EOF\n\n  \n");
         assert_eq!(doc.body, "body\n");
     }
 
+    /// 超限诊断同时给出实际字节数与上限，模型才知道要缩到多少。
     #[test]
-    fn 正文超上限时拒绝并给出两个数() {
+    fn body_over_limit_is_rejected_with_both_numbers() {
         let big = "x".repeat(DEFAULT_MAX_BODY + 1);
         let input = format!("'X'\n{big}\nX");
         let err = scan_heredoc(&input, DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::BodyTooLarge { .. }));
     }
 
+    /// 正文为空是合法形态，分隔符之后紧跟终止行即可。
     #[test]
-    fn 空正文可以接受() {
+    fn empty_body_is_accepted() {
         let doc = ok("'X'\nX");
         assert_eq!(doc.body, "");
     }
 
+    /// 含空格、含点号、为空、以连字符开头的分隔符都非法，逐条拒绝。
     #[test]
-    fn 非法分隔符被拒() {
+    fn invalid_delimiter_is_rejected() {
         for input in ["'a b'\nbody\na b", "''\nbody\n", "'a.b'\nbody\na.b", "'-x'\nbody\n-x"] {
             assert!(scan_heredoc(input, DEFAULT_MAX_BODY).is_err(), "{input} 应当被拒");
         }
     }
 
+    /// 分隔符超过长度上限时拒绝，避免诊断信息被拉长。
     #[test]
-    fn 超长分隔符被拒() {
+    fn overlong_delimiter_is_rejected() {
         let long = "A".repeat(MAX_DELIMITER_LEN + 1);
         let input = format!("'{long}'\nbody\n{long}");
         assert!(scan_heredoc(&input, DEFAULT_MAX_BODY).is_err());
     }
 
+    /// 终止行必须逐字节相等，行尾多一个空格就不算匹配，转而报未终止。
     #[test]
-    fn 终止行带尾随空格时不匹配() {
+    fn terminator_with_trailing_space_does_not_match() {
         let err = scan_heredoc("'X'\nbody\nX \n", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::UnterminatedHereDoc { .. }));
     }
 
+    /// 终止行带回车时不算匹配，回车是正文字节的一部分，与真实 shell 一致。
     #[test]
-    fn 终止行带回车时不匹配() {
+    fn terminator_with_carriage_return_does_not_match() {
         let err = scan_heredoc("'X'\nbody\nX\r\n", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::UnterminatedHereDoc { .. }));
     }
 
+    /// 这条守的是正文逐字节保真：任何换行规范化都会让写出的文件与模型给出的内容不一致。
     #[test]
-    fn 正文保留回车不转换换行() {
+    fn body_keeps_carriage_returns_without_newline_translation() {
         // 正文里的回车原样保留；终止行本身必须是纯 `X`，带回车不算匹配（与真实 shell 一致）。
         let doc = ok("'X'\nbody\r\nX\n");
         assert_eq!(doc.body, "body\r\n");
     }
 
+    /// 分隔符比较大小写敏感，小写的行不能终止大写的分隔符。
     #[test]
-    fn 大小写敏感() {
+    fn delimiter_matching_is_case_sensitive() {
         let err = scan_heredoc("'X'\nbody\nx\n", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::UnterminatedHereDoc { .. }));
     }
 
+    /// 守的是"宁可整体拒绝也不静默截断"：正文里撞上分隔符时后面的内容不可能被写入，静默接受会写出残缺文件。
     #[test]
-    fn 正文里撞上分隔符会被残留检测拦下() {
+    fn delimiter_appearing_inside_body_is_caught_as_trailing_text() {
         // heredoc 的固有语义是"遇到同名行就结束"，因此正文里撞上分隔符时，后面的内容会
         // 变成残留文本。这条正是 0007 要求的检测手段：整体拒绝，而不是静默截断。
         let err = scan_heredoc("'X'\na\nX\nb\n", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::TrailingText { .. }));
     }
 
+    /// 分隔符之后没有换行说明正文不存在，按未终止处理。
     #[test]
-    fn 分隔符后无换行时报未终止() {
+    fn delimiter_without_newline_reports_unterminated() {
         let err = scan_heredoc("'X'", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::UnterminatedHereDoc { .. }));
     }
 
+    /// 残留文本的偏移以整段输入为基准，调用方加上起始符的位置即得整条命令内的偏移。
     #[test]
-    fn 残留文本的位置相对整段输入() {
+    fn trailing_text_offset_is_relative_to_whole_input() {
         // `'X'` 3 字节、`\n` 1、`body\n` 5、`X` 1、`\n` 1，残留的 `t` 在第 11 字节。
         // 所有错误的 offset 都以 rest 为基准，调用方加上 `<<` 的位置即得整条命令里的偏移。
         let err = scan_heredoc("'X'\nbody\nX\ntrailing", DEFAULT_MAX_BODY).expect_err("应当被拒");
@@ -326,14 +344,16 @@ mod tests {
         assert_eq!(err.offset(), Some(12));
     }
 
+    /// 真实 shell 会把未加引号正文里的反斜杠当转义，这里不展开，因此拒绝。
     #[test]
-    fn 未加引号且正文含反斜杠时拒绝() {
+    fn unquoted_delimiter_with_backslash_is_rejected() {
         let err = scan_heredoc("X\na\\nb\nX", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::InvalidDelimiter { .. }));
     }
 
+    /// 引号没有闭合时报出开引号的位置，避免把残缺的引号内容当成合法分隔符。
     #[test]
-    fn 未闭合的引号报引号位置() {
+    fn unterminated_quote_reports_quote_offset() {
         let err = scan_heredoc("'X\nbody\nX", DEFAULT_MAX_BODY).expect_err("应当被拒");
         assert!(matches!(err, ParseError::UnterminatedQuote { .. }));
     }

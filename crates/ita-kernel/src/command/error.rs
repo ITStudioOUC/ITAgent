@@ -178,20 +178,23 @@ impl std::error::Error for ParseError {}
 mod tests {
     use super::*;
 
+    /// 文法错误属于输入错误，重试同一条命令只会得到同样的拒绝，因此一律标记为不可重试。
     #[test]
-    fn 语法错误一律不可重试() {
+    fn syntax_errors_are_never_retryable() {
         assert!(!ParseError::Empty.is_retryable());
         assert!(!ParseError::MissingProgram.is_retryable());
     }
 
+    /// 整体性错误没有具体位置，偏移必须是 `None`；有位置的错误必须给出字节偏移。
     #[test]
-    fn 偏移只在有位置时给出() {
+    fn offset_is_reported_only_when_position_is_known() {
         assert_eq!(ParseError::Empty.offset(), None);
         assert_eq!(ParseError::GlobNotAllowed { offset: 7, ch: '*' }.offset(), Some(7));
     }
 
+    /// 诊断里回显模型实际写过的片段，模型才能认出被拒的是哪一段。
     #[test]
-    fn 建议里带上模型写过的内容() {
+    fn hint_quotes_the_text_the_model_wrote() {
         let err = ParseError::UnsupportedOperator {
             offset: 3,
             text: "$(".to_owned(),
@@ -202,8 +205,9 @@ mod tests {
         assert!(hint.contains("绕过权限预检"));
     }
 
+    /// 超限诊断同时给出实际字节数与上限，模型才知道该缩到多少。
     #[test]
-    fn 正文过大时给出两个数() {
+    fn body_too_large_reports_actual_and_limit() {
         let hint = ParseError::BodyTooLarge { actual: 2_000_000, limit: 1_048_576 }.hint();
         assert!(hint.contains("2000000"));
         assert!(hint.contains("1048576"));
