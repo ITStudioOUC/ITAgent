@@ -243,7 +243,7 @@ fn entry_shape_rejects_fields_that_do_not_belong_to_kind() {
         .expect_err("墓碑不应带修改时间");
     insert("dead.rs", "tombstone", None, None, None, None, None).expect("全空的墓碑应当可插");
 
-    insert("neg.bin", "file", Some("h"), None, Some(-1), None, Some(0))
+    insert("neg.bin", "file", Some("h"), None, Some(-1), Some(1_700_000_000_000), Some(0))
         .expect_err("文件尺寸不能为负");
 }
 
@@ -264,6 +264,15 @@ fn tombstone_and_content_are_mutually_exclusive() {
         )
     };
 
+    let insert_oversized = |path: &str, mtime: Option<i64>| {
+        conn.execute(
+            "INSERT INTO snapshot_entries
+                 (snapshot_id, path, kind, hash, size, mtime, content_stored)
+             VALUES (?1, ?2, 'file', 'h', 64, ?3, 0)",
+            rusqlite::params![SNAPSHOT, path, mtime],
+        )
+    };
+
     let err = insert("dead.rs", "tombstone", None, None, Some(1)).expect_err("墓碑不应带内容标记");
     assert!(err.to_string().contains("CHECK"), "应当由 CHECK 拦住：{err}");
     insert("dead.rs", "tombstone", None, None, None).expect("墓碑本身应当可插");
@@ -275,8 +284,37 @@ fn tombstone_and_content_are_mutually_exclusive() {
     insert("big.bin", "file", Some("h"), None, Some(0)).expect_err("文件必须带尺寸");
     insert("big.bin", "file", Some("h"), Some(64), None).expect_err("文件必须带内容标记");
     insert("big.bin", "file", Some("h"), Some(64), Some(2)).expect_err("内容标记只有 0 与 1");
-    insert("big.bin", "file", Some("h"), Some(64), Some(0)).expect("超阈值文件应当可插");
+    insert_oversized("big.bin", Some(1_700_000_000_000)).expect("超阈值文件应当可插");
     insert("small.rs", "file", Some("h"), Some(64), Some(1)).expect("已存内容的文件应当可插");
+}
+
+/// 正文未进内容存储的文件条目必须带上修改时间，正文已存的不必。
+///
+/// 超阈值文件在回滚时不写回，残留清单只有尺寸与修改时间两项事实可用，缺了修改时间就分不清
+/// 磁盘上的文件是快照前就有的还是之后被动过，因此这条要求由表结构兜住，不留给写入方自觉。
+/// 正文已进内容存储的条目按正文写回，修改时间不参与判定，所以刻意不要求它——把这条约束收紧
+/// 到那一档之上会拒绝合法输入。
+#[test]
+fn file_without_stored_content_must_carry_mtime() {
+    let store = store_with_workspace();
+    let conn = store.conn_for_test();
+    insert_baseline(conn, SNAPSHOT);
+
+    let insert_file = |path: &str, stored: i64, mtime: Option<i64>| {
+        conn.execute(
+            "INSERT INTO snapshot_entries
+                 (snapshot_id, path, kind, hash, size, mtime, content_stored)
+             VALUES (?1, ?2, 'file', 'h', 64, ?3, ?4)",
+            rusqlite::params![SNAPSHOT, path, mtime, stored],
+        )
+    };
+
+    let err = insert_file("big.bin", 0, None).expect_err("未存内容的文件不应缺修改时间");
+    assert!(err.to_string().contains("CHECK"), "应当由 CHECK 拦住：{err}");
+
+    insert_file("big.bin", 0, Some(1_700_000_000_000)).expect("带修改时间的超阈值文件应当可插");
+    insert_file("small.rs", 1, None).expect("正文已存的文件不需要修改时间");
+    insert_file("small2.rs", 1, Some(1_700_000_000_000)).expect("正文已存的文件也允许带修改时间");
 }
 
 /// 重定基线只对基线快照成立，且发起人、原因、人工确认三者同进同出。

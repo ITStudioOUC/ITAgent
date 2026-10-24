@@ -5,6 +5,9 @@
 --     关系同样不进本表，回收走全局标记-清除加宽限期，不用引用计数。
 --   * 快照是对齐的依据，不是备份：条目记录"当时这个路径是什么"，墓碑记录"当时这里没有
 --     东西"，两者缺一不可。
+--   * 条目的字段要求按 kind 分档写成约束：文件必有哈希与尺寸，尺寸非负；正文未进内容存储
+--     的超阈值文件还必须带修改时间，因为回滚对它们只报告不写回，残留清单靠尺寸与修改时间
+--     才能说清"这个文件在快照之后动过没有"。
 --
 -- 约束写成建表语句里的 CHECK，而不是留在注释或调用点：SQLite 的 ALTER TABLE 只能加列、
 -- 不能追加约束，而迁移又只允许加表加列，所以"某种取值下才成立"的规则必须在建表这一次
@@ -62,6 +65,12 @@ CREATE INDEX IF NOT EXISTS snapshots_by_parent ON snapshots(parent_id);
 -- 超过大小阈值的文件仍是 file，但 content_stored = 0，只保留 hash、size 与 mtime：它们的
 -- 内容不在快照覆盖范围内，回滚时只报告、不删除也不覆盖。
 --
+-- 所以 content_stored = 0 的 file 条目必须有 mtime，这条约束由下面的形态 CHECK 强制。理由
+-- 是这类条目在回滚时不会被写回，残留清单是用户判断"这个文件算不算问题"的唯一依据，而清单里
+-- 只有尺寸与修改时间两项事实，缺了修改时间就分不清它是快照前就有的还是之后被别的东西改过。
+-- 正文已进内容存储的条目（content_stored = 1）不要求 mtime：它的正文本身就是快照的一部分，
+-- 回滚不看修改时间，把它一并要求等于把约束扩大到它管不到的地方。
+--
 -- content_stored 不给默认值：默认值会让"写墓碑时忘了带标记"落成一行自洽的坏数据。现在
 -- file 必须显式给出 0 或 1，dir 与墓碑则必须留空——留空表示这条标记不适用，而 0 表示
 -- "当时存在但内容未存"，那是超阈值文件的语义，两者不能混用。
@@ -82,10 +91,17 @@ CREATE TABLE IF NOT EXISTS snapshot_entries (
     PRIMARY KEY (snapshot_id, path),
     -- 每个分支都显式写 IS NULL / IS NOT NULL：CHECK 表达式求值为 NULL 时算通过，只用
     -- `content_stored IN (0, 1)` 会让漏写的标记（NULL）静默过关。负尺寸同样要拦：它是
-    -- 0017 要求的"标注尺寸"，负值会让残留清单与对比失去意义。
+    -- 残留清单要标注的尺寸，负值会让清单与对比失去意义。
+    --
+    -- file 支的最后一项把"未存内容就必带修改时间"写成 `content_stored = 1 OR mtime IS
+    -- NOT NULL`，而不是一律要求 mtime：正文已进内容存储的条目回滚时按正文写回，修改时间
+    -- 不参与判定，一律要求会把约束扩到它管不到的地方；只有超阈值那一档要靠修改时间判断
+    -- 磁盘上的文件在快照之后有没有被动过。这一项不会让整支退化成 NULL——它前面的
+    -- `content_stored IS NOT NULL` 在标记为空时已把整支判为假，而假与 NULL 相与仍为假。
     CONSTRAINT entry_shape_matches_kind CHECK (
         (kind = 'file' AND hash IS NOT NULL AND size IS NOT NULL AND size >= 0
-            AND content_stored IS NOT NULL AND content_stored IN (0, 1))
+            AND content_stored IS NOT NULL AND content_stored IN (0, 1)
+            AND (content_stored = 1 OR mtime IS NOT NULL))
         OR (kind = 'dir' AND hash IS NULL AND size IS NULL AND content_stored IS NULL)
         OR (kind = 'tombstone' AND hash IS NULL AND size IS NULL AND mode IS NULL
             AND mtime IS NULL AND content_stored IS NULL)
