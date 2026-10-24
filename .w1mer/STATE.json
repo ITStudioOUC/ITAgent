@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated": "2026-10-24T00:06:06Z",
-  "current": "06.2",
+  "updated": "2026-10-24T05:17:02Z",
+  "current": "06.2.1",
   "tasks": {
     "01": {
       "type": "main",
@@ -586,7 +586,7 @@
     "06.2": {
       "type": "main",
       "base": "1a1d528166c3c9d95a1620519b7d80e637b4ff48",
-      "end": null,
+      "end": "4dd5f68f3adb3f0e3f388b2e9cf06d53a79c39e3",
       "roles": {
         "reviewer": {
           "joined": true,
@@ -602,6 +602,23 @@
         }
       },
       "started": "2026-10-24T00:03:39Z",
+      "ended": "2026-10-24T05:05:09Z"
+    },
+    "06.2.1": {
+      "type": "sub",
+      "base": "4dd5f68f3adb3f0e3f388b2e9cf06d53a79c39e3",
+      "end": null,
+      "roles": {
+        "reviewer": {
+          "joined": false,
+          "at": null
+        },
+        "fixer": {
+          "joined": true,
+          "at": "2026-10-24T05:17:02Z"
+        }
+      },
+      "started": "2026-10-24T05:05:09Z",
       "ended": null
     }
   }
