@@ -5,12 +5,14 @@
 
 ## 当前位置
 
-- 版本 `0.1.29`，最新提交 `195483f`，工作树干净，261 项测试全绿，内核纯净门通过。
-- **本地领先 `origin/main` 十九个提交，尚未推送**。`origin/main` 仍停在 `4dd5f68`。
+- 版本 `0.1.30`，最新功能提交 `11cfe5e`，工作树干净，261 项测试全绿，内核纯净门与
+  分层门通过。
+- **本地领先 `origin/main` 二十七个提交，尚未推送**。`origin/main` 仍停在 `4dd5f68`。
   `.w1mer/ci_push_state.json` 不存在，说明推送计数从来没有建立过。按 AGENTS.md 第 8 节
   每五个批次推一次的纪律，这笔账已经欠了很久；下一次动手前先决定是补推还是重置计数。
-  CI 配置本身没动过，推送后应确认三个 job 全绿。
-- 已完成史诗：01 决策固化、02 仓库骨架、03 命令文法、04 上下文模型、05 语义压缩。
+  CI 配置在本批新增了分层门，推送后应确认三个 job 全绿，尤其看 lint job 的前两步。
+- 已完成史诗：01 决策固化、02 仓库骨架（含 02.8 分层与能力归属门）、03 命令文法、
+  04 上下文模型、05 语义压缩。
 - 进行中史诗 06 存储层。`06.1` 至 `06.2.3` 见下表，`06.3` 起未开工。
 
 ## 任务结构（容易看错的地方）
@@ -45,10 +47,10 @@
    `.w1mer/STATE.json` 里的 `type` 与 `roles`。
 2. 派 implementer（`ensure` + `role-join ... implementer`）与 explorer（只读，可同时开）；
    复审上一批要派 reviewer。三者并行是常态，不是可选项。
-3. 实现 + 五项验证，每条看**退出码**，不要用管道过滤输出：`cargo nextest run --workspace
+3. 实现 + 六项验证，每条看**退出码**，不要用管道过滤输出：`cargo nextest run --workspace
    --locked`、`cargo build --workspace --locked`、`cargo clippy --workspace --all-targets
    --locked -- -D warnings`、`cargo fmt --all --check`、`bash
-   .w1mer/scripts/check_kernel_purity.sh`。
+   .w1mer/scripts/check_kernel_purity.sh`、`bash .w1mer/scripts/check_layers.sh`。
 4. **先派 reviewer 并让它的 `role-join` 成功**，复审结论落盘并提交，再到第 5 步。
 5. `bash .w1mer/scripts/bump_version.sh batch`（一个批次一次，脚本同步 Cargo.lock），
    放在**最后一次提交**里。
@@ -59,6 +61,9 @@
 
 - **内核纯净**：`ita-kernel` 零依赖（含 dev），禁止 IO/时钟/环境变量/线程。要读什么就
   作为参数传进来。脚本与 clippy 双门强制，破门直接失败。
+- **分层与能力归属**：允许表与能力归属只写在 `.w1mer/scripts/check_layers.sh`，
+  `STACK.md` 与 `STRUCTURE.md` 是镜像。新增成员、依赖或二进制先改脚本的表，再同步文档；
+  门只看直接依赖，不是安全边界。
 - **SQLite 的一次性窗口**：`ALTER TABLE` 只有 `ADD COLUMN`，没有 `ADD CONSTRAINT`；既有
   列上的 CHECK、既有列的 DEFAULT、既有外键的删除动作**全都改不了**，而迁移扫描器禁
   `DROP TABLE`，重建表这条退路也堵死。任何「某种取值下才成立」的规则，必须在建表那一版
