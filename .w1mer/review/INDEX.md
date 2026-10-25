@@ -53,6 +53,7 @@
 | R_06_8 |  | ok | [R_06_8.md](R_06_8.md) |
 | R_06_9 |  | ok | [R_06_9.md](R_06_9.md) |
 | R_07_1 |  | ok | [R_07_1.md](R_07_1.md) |
+| R_07_2 |  | ok | [R_07_2.md](R_07_2.md) |
 <!-- /w1mer:rows -->
 
 ## Reviewer checklist

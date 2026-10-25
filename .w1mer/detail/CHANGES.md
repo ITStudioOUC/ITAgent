@@ -466,3 +466,18 @@ state: active
   拓扑序，入度按并集邻接表数（同一对 unit 的多种类边只算一次，与松弛次数一致）。`lease ↔ tools` 的
   双向记号落成单方向边（lease 依赖 tools，tools 先启动），在 mod.rs 文档注释写明裁决。07.1 不新增
   依赖、不建表、不碰 tokio，`lib.rs` 只加一行 `pub mod units;`。
+- 批次 07.2 新增 `crates/ita-server/src/units/{state,probe,supervisor}.rs`，server 首次对外暴露 unit
+  状态机、就绪探针与监督者，版本推进到 0.1.43。契约层面新增一组形状：`UnitState` 六变体
+  （未启动/启动中/就绪/失败/停止中/已停止）与 `UnitEvent` 六变体，纯转移函数
+  `next(state, event) -> Option<UnitState>` 非法转移返回 `None` 而非原地不动，失败 unit 的不可重启
+  在状态机层面即有保障；`ProbeResult` 三值（就绪/未就绪/失败）加可注入 trait `ReadinessProbe`，
+  探针是「功能可用」判定不是「进程活着」判定；`Supervisor` 同步，按 07.1 拓扑序启动（一个 unit
+  全部依赖 `Ready` 才启动）、按逆拓扑序停止，失败不级联重启是双层保障——状态机层面
+  `next(Failed, Start)` 返回 `None`，监督者层面 `Failed` unit 不重启、依赖者永不启动。`topology.rs`
+  新增只读访问器 `dependencies_of`，只读边集合不修改，07.1 的 `find_cycle` 与 `startup_order` 行为
+  不受影响。07.2 不新增依赖、不建表、不碰 tokio。两条留待 07.3/07.4 的契约边界：`dependencies_of`
+  的注释声称按边集合去重但实现逐边 `map` 不折叠，同一对 unit 的多种类边会返回重复 target，当前
+  监督者用 `.all()` 消费不受影响，07.3 落地时要么折叠去重要么改正注释；`run_until_blocked` 的
+  循环终止条件是 `step() == Blocked`，一个永远返回 `NotReady` 的探针会让 unit 永远停在 `Starting`、
+  `step` 永远返回 `Progressed`、循环无限，无步数上限，探针收敛性由真实探针实现者保证，07.3 落地
+  真实探针时须明确这条契约或在监督者加可配置步数上限。
