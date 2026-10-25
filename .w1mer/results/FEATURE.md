@@ -238,3 +238,79 @@ seq 从 `workspace_seq` 计数器读改写分配，不用 `MAX(seq) + 1`。第 3
 新增 17 项测试，全部内联在 `ita-server` 的 `units` 模块：`state.rs` 的转移函数 8 项（含非法
 转移被拒、失败 unit 不可重启），`probe.rs` 的假探针 1 项，`supervisor.rs` 的十条验收 8 项。
 全仓测试总数从 413 项增至 430 项。
+
+## 07.3 必需与非必需启动门与降级
+
+结论：启动门与启动计划落地，unit 状态落库。`StartupPlan` 声明必需与非必需 unit 集并与拓扑
+交叉校验（必需集非空、两集不相交、全部 unit 在拓扑里），校验失败返回显式错误不静默继续。
+`activate` 是纯函数，只认 `Ready` 不认 `Starting`：必需 unit 的 `Starting` 与 `Failed` 计入未
+就绪，`NotStarted` 是被依赖阻塞不计入未就绪；非必需 unit 的 `Failed`/`NotStarted`/`Starting`
+计入降级不阻塞激活。`units` 表迁移只加不改，`ita-store` 加 unit 状态读写操作（`set_unit_state`/
+`read_unit_state`/`read_all_unit_states`），`UnitState` 三值域（`ready`/`degraded`/`failed`）是
+六状态状态机的投影。十条验收全过，449 项测试全绿，验证命令退出码全为 0。
+
+### 提交
+
+| 提交 | 主题 | 改动 |
+|---|---|---|
+| `f87af45` | 必需与非必需启动门与降级，unit 状态落库 | `crates/ita-server/src/units/plan.rs` 新建 `StartupPlan`（`required`/`optional` 两集合、构造与校验）、`crates/ita-server/src/units/activation.rs` 新建 `ActivationResult` 两变体与 `activate` 纯函数、`crates/ita-server/src/units/mod.rs` 声明两模块并再导出关键类型、`crates/ita-store/migrations/0003_units.sql` 新建 `units` 表迁移、`crates/ita-store/src/units.rs` 新建 unit 状态读写操作与 `UnitState` 三值域、`crates/ita-store/src/db.rs` 加 `InvalidUnitState` 变体与三个 `Store` 方法、`crates/ita-store/src/lib.rs` 声明 `units` 模块并再导出 `UnitState`、`crates/ita-store/src/migrate.rs` 加 version 3 迁移条目 |
+
+### 启动计划与启动门
+
+`StartupPlan` 是两个集合：`required: BTreeSet<UnitId>`（必需 unit，激活门等待它们全部就绪）
+与 `optional: BTreeSet<UnitId>`（非必需 unit，后台异步加载，失败只标记降级）。计划是静态声明，
+在启动前建好，不动态建行。计划与拓扑交叉校验：计划里的每个 unit 必须在拓扑里（必需集非空、
+两集不相交、全部 unit 在拓扑里），校验失败返回显式错误。
+
+`activate(supervisor: &Supervisor, plan: &StartupPlan) -> ActivationResult` 是纯函数：对每个
+必需 unit，状态是 `Ready` 计入就绪列表，`Starting` 与 `Failed` 计入未就绪列表，`NotStarted` 是
+被依赖阻塞不计入未就绪列表；对每个非必需 unit，状态是 `Failed`/`NotStarted`/`Starting` 计入
+降级列表，`Ready` 不计。未就绪列表为空则返回 `Ready`（带降级列表），否则返回 `NotReady`（带未
+就绪列表）。门不改变状态，只判定。降级标记是门之后的独立步骤（server 拿到 `Ready` 结果后写库），
+与判定分离。
+
+### `units` 表与 unit 状态落库
+
+`units` 表结构是 `id TEXT PRIMARY KEY`、`state TEXT NOT NULL`、`updated_at INTEGER NOT NULL`。
+`state` 是字符串不是枚举，取值域是 `ready`/`degraded`/`failed`。`updated_at` 是 epoch 毫秒。
+`UnitState` 是三个变体：`Ready`、`Degraded`、`Failed`，是六状态状态机的投影（未启动、停止中、
+已停止是瞬态，不落库）。`set_unit_state` 是 upsert（`ON CONFLICT(id) DO UPDATE`），
+`read_unit_state` 返回 `Option<UnitState>`（缺失 unit 返回 `None`），`read_all_unit_states` 返回
+`Vec<(String, UnitState)>` 按 id 排序。`StoreError::InvalidUnitState(String)` 变体用于防御性解析
+域外状态字符串。
+
+### 边界与裁决
+
+- 门只认 `Ready`，不认 `Starting`。一个必需 unit 进程活着（`Starting`）但探针未通过，门返回
+  未就绪。非必需 unit 的 `Starting` 计入降级（还在启动中，功能未可用），不是未就绪。
+- `NotStarted` 的必需 unit 是被依赖阻塞，不是独立未就绪，不计入未就绪列表。这与计划第四节
+  第 1 条验收一致：`router` 与 `ipc` 因依赖未就绪保持 `NotStarted`，不计入未就绪列表。
+- 七 unit 最小拓扑的 `telemetry` 用 `Failed` 而非 `NotReady`：`NotReady` 保持 `Starting`，而
+  `step()` 按启动顺序先碰到 `Starting` 的 telemetry 就重探针并返回，`tools` 与 `lease` 永远启动
+  不了，`run_until_blocked` 也永不终止。`Failed` 是终态，不重探针，`tools` 与 `lease` 能推进到
+  就绪。非必需 unit 的 `Starting` 计入降级由 `optional_not_ready_counts_as_degraded` 单独覆盖。
+  这是计划第四节第 10 条验收里 `telemetry` 返回 `NotReady` 的口径与监督者 `step()` 行为的冲突，
+  裁决为 `Failed` 以保住"全部必需 unit 就绪"的验收预期。
+
+### 验证
+
+| 命令 | 退出码 | 结果 |
+|---|---|---|
+| `cargo build --workspace --locked` | 0 | 全工作区构建通过 |
+| `cargo nextest run --workspace --locked` | 0 | 449 项通过，0 项跳过（新增 19 项） |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | 零告警 |
+| `cargo fmt --all --check` | 0 | 无需格式化 |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | 0 | 文档构建通过 |
+| `cargo test --doc --workspace --locked` | 0 | doctest 通过 |
+| `bash .w1mer/scripts/check_layers.sh` | 0 | 分层门通过 |
+| `bash .w1mer/scripts/check_kernel_purity.sh` | 0 | 内核纯净门通过 |
+| `shellcheck --version` | 0 | shellcheck 0.10.0 可用 |
+| `shellcheck .w1mer/scripts/*.sh` | 0 | shell 脚本静态检查通过 |
+
+### 新增测试分布
+
+新增 19 项测试：`ita-server` 的 `plan.rs` 6 项（计划与拓扑交叉校验、必需集非空、两集不相交、
+七 unit 最小计划通过校验）、`activation.rs` 6 项（必需未就绪返回未就绪、全部必需就绪返回就绪、
+非必需失败只标记降级、非必需未就绪计入降级、就绪不等于运行、七 unit 最小拓扑激活与降级）；
+`ita-store` 的 `units.rs` 7 项（unit 状态落库、读回、缺失 unit 返回 None、全部 unit 状态按 id
+排序、域外状态字符串被拒、upsert 覆盖、`Store` 方法接线）。全仓测试总数从 430 项增至 449 项。
