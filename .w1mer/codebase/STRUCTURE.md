@@ -21,13 +21,51 @@ ita-worker         workspace worker process (stateless)
 ita-cli            the `ita` binary (role dispatch: master|worker|tool-host)
 ```
 
-**Status.** All eleven crates exist as directories with their manifests and a `lib.rs`
-carrying only module documentation; `ita-cli` additionally has role dispatch and tests.
-Except for that, the responsibilities listed above are the *target* for each crate, not
-current behaviour. The kernel's first real content lands in epics 03–05. `ita-kernel` has no dependencies at all — not even
-dev-dependencies — enforced by `.w1mer/scripts/check_kernel_purity.sh` plus
-`crates/ita-kernel/clippy.toml`. `ita-cli` is the only member that produces a binary
-(`ita`); role dispatch lives in `crates/ita-cli/src/role.rs`.
+**Status.** Epics 01–05 are complete: the kernel holds the command grammar, the context
+tree with pure `resolve()`, and the semantic-compression planning modules. `ita-store`
+has opened epic 06 — the database handle, migration runner, workspace scope and initial
+schema are done (`06.1`–`06.2`); event/CAS/snapshot writes are still open (`06.3`
+onward). The remaining crates are shells whose responsibilities above are still targets. `ita-kernel` has no dependencies
+at all — not even dev-dependencies — enforced by
+`.w1mer/scripts/check_kernel_purity.sh` plus `crates/ita-kernel/clippy.toml`. Role
+dispatch lives in `crates/ita-cli/src/role.rs`.
+
+## Dependency edges
+
+`.w1mer/scripts/check_layers.sh` is the executable contract; this section is the
+summary. A member may depend only on the crates listed below. `dev` and `build`
+dependencies are also checked for `ita-*` edges, because a dev-dependency can create a
+hidden back-edge that the compiler would otherwise allow.
+
+| crate | allowed `ita-*` dependencies |
+|---|---|
+| `ita-kernel` | none |
+| `ita-store` | `ita-kernel` |
+| `ita-proto` | `ita-kernel`, `ita-model` |
+| `ita-model` | `ita-kernel` |
+| `ita-workflow` | `ita-kernel` |
+| `ita-sandbox` | `ita-kernel` |
+| `ita-tools` | `ita-kernel`, `ita-proto`, `ita-sandbox` |
+| `ita-exec` | `ita-kernel`, `ita-proto`, `ita-sandbox`, `ita-tools` |
+| `ita-worker` | `ita-kernel`, `ita-proto`, `ita-model` |
+| `ita-server` | `ita-kernel`, `ita-store`, `ita-proto`, `ita-model`, `ita-workflow`, `ita-tools` |
+| `ita-cli` | all ten library crates (composition root) |
+
+The consequences worth remembering:
+
+- No library crate may depend on `ita-cli`; the binary is the only composition root.
+- `ita-worker`, `ita-exec` and `ita-sandbox` never depend on `ita-store`. The database
+  is reachable only through `ita-server`.
+- `ita-proto -> ita-model` is one-way; `ita-model` never depends on `ita-proto`.
+- Only `ita-cli` produces a binary (`ita`). A new binary target must be registered in
+  the script's `ALLOWED_BINS` with a stated purpose.
+- Capability ownership: SQLite drivers only in `ita-store`; HTTP/TLS stacks only in
+  `ita-server`; landlock/seccomp only in `ita-sandbox`; `libc` only in `ita-sandbox`
+  and `ita-exec`; `nix`/`rustix` also in `ita-server` for unit supervision.
+
+The gate is a layering guard, not a security boundary: it cannot see `std::net`,
+`tokio::net`, build-script network access, transitive dependencies, or `pub use`
+re-exports. Sandbox policy remains the real network boundary (ADR 0010).
 
 ## Cross-module data flow
 
