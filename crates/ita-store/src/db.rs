@@ -17,8 +17,10 @@ use crate::entries::{self, SnapshotEntry};
 use crate::events::{self, AppendedEvent, Event, NewEvent};
 use crate::migrate::{self, MigrateError};
 use crate::preview::PreviewLimit;
+use crate::retention::{self, RebaseRequest};
 use crate::scope::WorkspaceScope;
 use crate::snapshots::{self, CreatedSnapshot, SnapshotInfo};
+use crate::squash;
 
 /// 存储层错误。
 #[derive(Debug)]
@@ -55,6 +57,10 @@ pub enum StoreError {
     UnknownSnapshot(CheckpointId),
     /// 条目形状不合法：正文未存的文件条目缺修改时间。
     InvalidEntryShape(String),
+    /// 自主模式重定基线被拒：agent 无人值守连续推进时重定基线一律拒绝。
+    RebaseRejectedAutonomous,
+    /// 重定基线缺人工确认：留痕三列任一为空。
+    RebaseMissingConfirmation,
 }
 
 impl std::fmt::Display for StoreError {
@@ -81,6 +87,10 @@ impl std::fmt::Display for StoreError {
             }
             Self::UnknownSnapshot(id) => write!(f, "快照 {id} 不存在或属于另一工作区"),
             Self::InvalidEntryShape(msg) => write!(f, "条目形状不合法：{msg}"),
+            Self::RebaseRejectedAutonomous => {
+                write!(f, "自主模式重定基线被拒：没有人工确认时默认禁止")
+            }
+            Self::RebaseMissingConfirmation => write!(f, "重定基线缺人工确认：留痕三列任一为空"),
         }
     }
 }
@@ -363,6 +373,56 @@ impl Store {
         id: &CheckpointId,
     ) -> Result<Vec<SnapshotEntry>, StoreError> {
         entries::read_in(self.conn(), scope, id)
+    }
+
+    /// 增量数达到保留窗口时把最老两个增量并入基线。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 数该工作区的增量快照数，达到 `max_incrementals` 时合并最老两个增量进基线。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// `max_incrementals` 是参数不是散落常量：ADR 0018 要求配置入口，配置结构落地前由调用方
+    /// 从配置读出后传入。未达到窗口时是空操作。合并事务先重挂子快照再删父，是无动作外键的
+    /// 硬约束。
+    ///
+    /// # 副作用
+    /// 写 `snapshots` 与 `snapshot_entries` 表。
+    pub fn squash_if_needed(
+        &mut self,
+        scope: &WorkspaceScope,
+        max_incrementals: usize,
+    ) -> Result<(), StoreError> {
+        let tx = self.conn_mut().transaction()?;
+        if retention::needs_squash(&tx, scope, max_incrementals)? {
+            squash::merge_in(&tx, scope)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 重定基线：删所有增量、更新基线条目与留痕三列。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内重定基线：自主模式拒绝、留痕三列校验、删增量、更新基线。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// 重定基线是独立动词，自主模式一律拒绝，留痕三列成组写入。基线行只更新不删除。
+    ///
+    /// # 副作用
+    /// 写 `snapshots` 与 `snapshot_entries` 表。
+    pub fn rebaseline(
+        &mut self,
+        scope: &WorkspaceScope,
+        req: &RebaseRequest,
+    ) -> Result<(), StoreError> {
+        let tx = self.conn_mut().transaction()?;
+        retention::rebaseline_in(&tx, scope, req)?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// 供 crate 内部模块使用的连接。

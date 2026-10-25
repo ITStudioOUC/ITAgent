@@ -19,14 +19,17 @@ pub mod events;
 mod heads;
 pub mod migrate;
 pub mod preview;
+pub mod retention;
 pub mod scope;
 mod seq;
 mod snapshots;
+mod squash;
 
 pub use commit::{CommittedFrame, FrameBodyError, decode_frame, encode_frame};
 pub use db::{Store, StoreError};
 pub use entries::SnapshotEntry;
 pub use events::{AppendedEvent, Event, NewEvent};
 pub use preview::PreviewLimit;
+pub use retention::{RebaseMode, RebaseRequest};
 pub use scope::WorkspaceScope;
 pub use snapshots::{CreatedSnapshot, SnapshotInfo};
