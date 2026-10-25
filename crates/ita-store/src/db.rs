@@ -9,14 +9,16 @@
 
 use std::path::{Path, PathBuf};
 
-use ita_kernel::context::{BlobRef, NodeId, SessionId};
+use ita_kernel::context::{BlobRef, CheckpointId, NodeId, SessionId};
 use rusqlite::Connection;
 
 use crate::cas;
+use crate::entries::{self, SnapshotEntry};
 use crate::events::{self, AppendedEvent, Event, NewEvent};
 use crate::migrate::{self, MigrateError};
 use crate::preview::PreviewLimit;
 use crate::scope::WorkspaceScope;
+use crate::snapshots::{self, CreatedSnapshot, SnapshotInfo};
 
 /// 存储层错误。
 #[derive(Debug)]
@@ -47,6 +49,12 @@ pub enum StoreError {
     Cas(std::io::Error),
     /// 按哈希读回内容时，行不存在。
     BlobNotFound(String),
+    /// 条目声明正文已存，但内容寻址存储里没有该哈希对应的行。
+    MissingBlob(String),
+    /// 快照不存在，或属于另一工作区。
+    UnknownSnapshot(CheckpointId),
+    /// 条目形状不合法：正文未存的文件条目缺修改时间。
+    InvalidEntryShape(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -68,6 +76,11 @@ impl std::fmt::Display for StoreError {
             Self::CrossWorkspace(id) => write!(f, "帧引用的会话或节点 {id} 属于另一工作区"),
             Self::Cas(e) => write!(f, "内容寻址存储写入失败：{e}"),
             Self::BlobNotFound(hash) => write!(f, "内容寻址存储里没有哈希 {hash} 对应的行"),
+            Self::MissingBlob(hash) => {
+                write!(f, "条目声明正文已存，但内容寻址存储里没有哈希 {hash} 对应的行")
+            }
+            Self::UnknownSnapshot(id) => write!(f, "快照 {id} 不存在或属于另一工作区"),
+            Self::InvalidEntryShape(msg) => write!(f, "条目形状不合法：{msg}"),
         }
     }
 }
@@ -296,6 +309,60 @@ impl Store {
     /// 读文件系统。
     pub fn get(&self, hash: &str) -> Result<Vec<u8>, StoreError> {
         cas::get_in(self.conn(), &self.cas_root, hash)
+    }
+
+    /// 创建一个快照。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内分配 seq、链接父边、插入快照行与清单条目。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// 创建是权威写，提交后才返回。调用方只给清单，不给链结构：父边与 kind 由存储层自动
+    /// 链接，首个快照是基线，其余是增量。
+    ///
+    /// # 副作用
+    /// 写 `snapshots` 与 `snapshot_entries` 表。
+    pub fn create_snapshot(
+        &mut self,
+        scope: &WorkspaceScope,
+        entries: &[SnapshotEntry],
+    ) -> Result<CreatedSnapshot, StoreError> {
+        let tx = self.conn_mut().transaction()?;
+        let created = snapshots::create_in(&tx, scope, entries)?;
+        tx.commit()?;
+        Ok(created)
+    }
+
+    /// 读取快照元信息。
+    ///
+    /// # 边界与前提
+    /// 快照不存在或属于另一工作区返回 [`StoreError::UnknownSnapshot`]。
+    ///
+    /// # 副作用
+    /// 只读。
+    pub fn snapshot(
+        &self,
+        scope: &WorkspaceScope,
+        id: &CheckpointId,
+    ) -> Result<SnapshotInfo, StoreError> {
+        snapshots::read_meta(self.conn(), scope, id)
+    }
+
+    /// 读取一个快照的全部条目，按路径排序。
+    ///
+    /// # 边界与前提
+    /// 跨工作区校验与 [`Store::snapshot`] 相同。
+    ///
+    /// # 副作用
+    /// 只读。
+    pub fn snapshot_entries(
+        &self,
+        scope: &WorkspaceScope,
+        id: &CheckpointId,
+    ) -> Result<Vec<SnapshotEntry>, StoreError> {
+        entries::read_in(self.conn(), scope, id)
     }
 
     /// 供 crate 内部模块使用的连接。
