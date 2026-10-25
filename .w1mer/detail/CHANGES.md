@@ -444,3 +444,16 @@ state: active
   `restore.rs` 模块头写"删除是递归删除，目录与文件都处理"但 `delete` 用 `remove_file` 对目录报错，
   文档与行为不符；`align.rs` 模块头出现 ROADMAP 编号（06.6/06.7/06.8）与 ADR 编号（0017/0018），
   违反注释规范"禁止内部编号"，既有模式在 `squash.rs` 与 `db.rs`/`retention.rs` 是 06.7 引入的写法。
+- 批次 06.9 新增 `crates/ita-store/src/{gc,marks}.rs` 与集成测试 `tests/gc.rs`，存储层首次对外
+  暴露标记清除 GC，版本推进到 0.1.41。契约层面新增一组形状：`Store::gc(grace_period, extra_roots)`
+  是全局标记-清除加宽限期，不是引用计数，在单个立即事务内做行清扫（标记、两观协议、删无引用且超
+  宽限期的行），提交后做文件清扫（删被删行的文件、清扫无 blob 行的孤儿文件含 `.tmp`）。标记集是
+  三张表（`snapshot_entries.hash`、`nodes.body_hash`、`events.payload_hash`）加 `extra_roots` 参数
+  的并集，由 `marks::collect` 收集，租约根真被消费进标记集而非只透传。宽限期是两观协议：第一次
+  观察只写 `unreferenced_since = now` 不删，第二次观察且超宽限期才删，写入与超期判断都在同一事务
+  边界内。删除顺序行先行文件随后，中断只留无引用文件。`cas::blob_path` 从私有提升为 `pub(crate)`，
+  供 `gc.rs` 的文件清扫共享路径推导。`GcResult` 是公开类型，`lib.rs` 声明 `gc` 与 `marks` 两个私有
+  模块并导出 `GcResult`。GC 删文件与回滚写回、squash 折叠不互相踩踏：回滚只读 CAS 写工作区路径，
+  squash 删增量条目但折叠后有效状态仍被新基线条目引用，两者都是单写者顺序操作无并发。宽限期不重启
+  不是缺陷：ADR 0018 把宽限期绑在在途工具生命周期上，靠租约表（`extra_roots`）保护，不是靠宽限期
+  重启。
