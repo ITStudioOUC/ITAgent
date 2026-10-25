@@ -65,7 +65,8 @@ The consequences worth remembering:
 
 The gate is a layering guard, not a security boundary: it cannot see `std::net`,
 `tokio::net`, build-script network access, transitive dependencies, or `pub use`
-re-exports. Sandbox policy remains the real network boundary (ADR 0010).
+re-exports, and crates allowed to use `libc` can still issue raw system calls.
+Sandbox policy remains the real network boundary (ADR 0010).
 
 ## Cross-module data flow
 

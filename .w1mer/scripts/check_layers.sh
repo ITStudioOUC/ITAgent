@@ -10,10 +10,11 @@
 # ita-* 归属检查，但不参与能力归属检查——它们不进产物，测试与基准需要宽松。
 #
 # 这道门是分层守卫，不是安全边界：std::net、tokio::net、构建脚本内的网络访问、
-# 传递依赖与 pub use 转出口都不在检查范围内。无出网的真正边界是 ADR 0010 的沙箱。
+# 传递依赖与 pub use 转出口都不在检查范围内；被允许使用 libc 的 crate 仍可直接
+# 发系统调用。无出网的真正边界是沙箱策略，不是这里。
 #
 # 新增成员、放宽某条边、引入新的敏感能力时，先改本文件的常量，再同步
-# .w1mer/codebase/STACK.md 与 STRUCTURE.md 的摘要。脚本是唯一权威来源。
+# .w1mer/codebase/STACK.md 与 STRUCTURE.md。脚本是唯一权威来源，两份文档是镜像。
 
 set -euo pipefail
 
@@ -21,13 +22,16 @@ cd "$(git rev-parse --show-toplevel)"
 
 die() { printf '分层门失败：%s\n' "$*" >&2; exit 1; }
 
-# --locked 与仓库其余 cargo 步骤保持一致。注入依赖后锁文件会先过期，测试失败路径
-# 前要先刷新 Cargo.lock，见 .w1mer/detail/01_plan-02.md 的 02.8 小节。
+# 与仓库其余 cargo 步骤一致带 --locked。--no-deps 只读清单、不解析锁文件，所以
+# 清单改动不会让这一步因锁文件过期而失败；真失败时把原始诊断原样打出来，不猜测原因。
 meta_file=$(mktemp)
-trap 'rm -f "$meta_file"' EXIT
+err_file=$(mktemp)
+trap 'rm -f "$meta_file" "$err_file"' EXIT
 
-if ! cargo metadata --no-deps --locked --format-version 1 >"$meta_file" 2>/dev/null; then
-  die "cargo metadata 执行失败（清单与 Cargo.lock 不一致时也会走到这里）"
+if ! cargo metadata --no-deps --locked --format-version 1 >"$meta_file" 2>"$err_file"; then
+  printf '分层门失败：cargo metadata 执行失败，原因如下：\n' >&2
+  sed 's/^/  /' "$err_file" >&2
+  exit 1
 fi
 
 python3 - "$meta_file" <<'PY'
@@ -44,13 +48,14 @@ members = {package["name"] for package in packages}
 ALLOWED = {
     "ita-kernel": set(),
     "ita-store": {"ita-kernel"},
-    # 12.7 的模型代理帧与 12.8 的流式转发复用归一化消息类型。反向边 model -> proto
-    # 禁止：编码解码只能由 proto 消费 model 的类型。
+    # 模型代理帧与流式转发复用归一化消息类型。反向边 model -> proto 禁止：编码
+    # 解码只能由 proto 消费 model 的类型。
     "ita-proto": {"ita-kernel", "ita-model"},
     "ita-model": {"ita-kernel"},
     "ita-workflow": {"ita-kernel"},
     "ita-sandbox": {"ita-kernel"},
-    # 11.9 的构建沙箱与 11.14 的 Fidelity 门要用 Sandbox trait 与 Fidelity 类型。
+    # 工具安装期的构建沙箱与可用性门要用 sandbox 的 Sandbox trait 与平台探针；
+    # 策略与保真度类型在 kernel，不在这里重复定义。
     "ita-tools": {"ita-kernel", "ita-proto", "ita-sandbox"},
     "ita-exec": {"ita-kernel", "ita-proto", "ita-sandbox", "ita-tools"},
     "ita-worker": {"ita-kernel", "ita-proto", "ita-model"},
@@ -130,6 +135,10 @@ for name in sorted(ALLOWED.keys() - members):
         f"允许表里的 {name} 不是 workspace 成员，条目已陈旧；成员改名或删除后要同步清理。"
     )
 for capability, owners in CAPABILITIES.items():
+    if not owners:
+        errors.append(
+            f"能力 {capability} 的归属集合为空；要么删除该规则，要么写明允许的 crate。"
+        )
     for owner in sorted(set(owners) - members):
         errors.append(
             f"能力 {capability} 的归属 {owner} 不是 workspace 成员，条目已陈旧。"
@@ -141,7 +150,8 @@ for package in packages:
     allowed = ALLOWED.get(crate, set())
     for dependency in package["dependencies"]:
         dep_name = dependency["name"]
-        kind = dependency.get("kind") or "普通"
+        kind = dependency.get("kind")
+        kind_text = "普通" if kind is None else kind
         if dep_name in members:
             if dep_name == "ita-cli":
                 errors.append(
@@ -151,14 +161,14 @@ for package in packages:
             elif dep_name not in allowed:
                 allowed_text = "、".join(sorted(allowed)) if allowed else "无"
                 errors.append(
-                    f"{crate} 不允许依赖 {dep_name}（{kind}依赖）；它允许的 ita-* 依赖"
-                    f"是：{allowed_text}。"
+                    f"{crate} 不允许依赖 {dep_name}（{kind_text}依赖）；它允许的 ita-*"
+                    f"依赖是：{allowed_text}。"
                 )
             else:
                 edge_count += 1
-        if kind == "普通":
+        if kind is None:
             owners = CAPABILITIES.get(dep_name)
-            if owners and crate not in owners:
+            if owners is not None and crate not in owners:
                 owners_text = "、".join(sorted(owners))
                 errors.append(
                     f"{crate} 的普通依赖 {dep_name} 越权：该能力只允许出现在 "
