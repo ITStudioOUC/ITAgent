@@ -331,3 +331,13 @@ state: active
   `ita-proto` 依赖 `ita-model` 是为了代理帧与流式转发复用归一化类型，反向边禁止。已知边界：
   不看传递依赖，不看被允许 `libc` 的 crate 里的裸系统调用，构建脚本与 `std::net` 也不在检查内；
   它只是分层守卫，无出网的真正边界仍是沙箱策略。
+- 批次 02.9 把本地与 CI 的验证入口收拢到 `.w1mer/scripts/verify.sh` 的 fmt、lint、test、
+  msrv 四个阶段（`all` 是前三者），CI 的四个 job 改为调用对应阶段，验证命令的唯一权威从
+  `AGENTS.md`、`STACK.md`、`HANDOFF.md` 与 `ci.yml` 四处收敛到脚本。`rust-version = "1.85"`
+  从清单里的声明变成可执行约束：msrv job 用 1.85.0 跑
+  `cargo +1.85.0 check --workspace --all-targets --locked`，代价是代码里不得使用 1.88 才稳定的
+  let-chains，本批把两处越界改写为嵌套 `if let`，语义等价且由既有单测覆盖两侧。分层门新增
+  `--metadata` 只读入口与 `packages` 和 `workspace_members` 的 id 集合校验，配套自测用合成
+  metadata 覆盖十条失败路径、三条对照、一条错误路径与一次规则删除反证，门的失败路径首次有
+  回归测试。已知边界：`cargo check` 不编译 doctest（当前 0 份），shellcheck 与 cargo-nextest
+  的版本跟环境走，`verify.sh all` 不含 msrv。
