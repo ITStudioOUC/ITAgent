@@ -1,6 +1,6 @@
 //! 标识符类型。
 //!
-//! 四种 id 都是 26 字符的 ULID 文本形式。用专用类型而不是裸 `String`，是为了让"把节点
+//! 五种 id 都是 26 字符的 ULID 文本形式。用专用类型而不是裸 `String`，是为了让"把节点
 //! id 当会话 id 传"这类错误在编译期就被拦住——它们在三处以上同时出现，靠命名区分不够。
 
 use std::fmt;
@@ -42,7 +42,7 @@ impl std::error::Error for IdError {}
 
 /// 生成一个带具体类型的 id。
 ///
-/// 四个类型共用同一套校验与格式化，差异只在类型本身。用宏而不是泛型，是为了让每个类型
+/// 五个类型共用同一套校验与格式化，差异只在类型本身。用宏而不是泛型，是为了让每个类型
 /// 都是独立的名义类型：`fn f(NodeId)` 与 `fn f(SessionId)` 不可互换。
 macro_rules! id_type {
     ($(#[$meta:meta])* $name:ident, $label:literal) => {
@@ -123,6 +123,11 @@ id_type!(
     CheckpointId,
     "检查点"
 );
+id_type!(
+    /// 一条事件。append-only 事件日志里的一行，按工作区内的 seq 排序。
+    EventId,
+    "事件"
+);
 
 #[cfg(test)]
 mod tests {
@@ -130,13 +135,14 @@ mod tests {
 
     const VALID: &str = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
-    /// 四种标识符都接受规范的 26 字符 Crockford base32 串。
+    /// 五种标识符都接受规范的 26 字符 Crockford base32 串。
     #[test]
     fn valid_identifier_is_accepted() {
         assert!(NodeId::parse(VALID).is_ok());
         assert!(SessionId::parse(VALID).is_ok());
         assert!(WorkspaceId::parse(VALID).is_ok());
         assert!(CheckpointId::parse(VALID).is_ok());
+        assert!(EventId::parse(VALID).is_ok());
     }
 
     /// 长度不符的串被拒，且错误里带上实际长度，让调用方看见错在哪。

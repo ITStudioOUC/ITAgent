@@ -17,7 +17,7 @@ pub mod resolve;
 pub mod tree;
 
 pub use budget::{Budget, BudgetError};
-pub use ids::{CheckpointId, IdError, NodeId, SessionId, WorkspaceId};
+pub use ids::{CheckpointId, EventId, IdError, NodeId, SessionId, WorkspaceId};
 pub use input::{CheckpointFacts, InputError, ResolveInput};
 pub use node::{BlobRef, Frame, Node, NodeBody, TurnRole};
 pub use read_set::{PathKey, ReadRecord, ReadSet, StaleVerdict};

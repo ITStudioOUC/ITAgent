@@ -12,7 +12,9 @@
 
 pub mod db;
 pub mod migrate;
+pub mod preview;
 pub mod scope;
 
 pub use db::{Store, StoreError};
+pub use preview::PreviewLimit;
 pub use scope::WorkspaceScope;
