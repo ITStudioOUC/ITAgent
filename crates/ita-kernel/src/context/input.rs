@@ -233,20 +233,23 @@ mod tests {
         }
     }
 
+    /// 最小输入通过校验，校验器不会拒掉合法的短历史。
     #[test]
-    fn 最小输入通过校验() {
+    fn minimal_input_passes_validation() {
         assert!(input().validate().is_ok());
     }
 
+    /// 固定层内容不对时被拒，固定层永远是系统提示。
     #[test]
-    fn 固定层内容不对时被拒() {
+    fn wrong_fixed_layer_content_is_rejected() {
         let mut i = input();
         i.fixed_layer = turn_node(1);
         assert_eq!(i.validate(), Err(InputError::NotFixedLayer));
     }
 
+    /// 帧引用的检查点必须带事实，摘要不会失去可核对的依据。
     #[test]
-    fn 帧引用的检查点必须带事实() {
+    fn checkpoint_referenced_by_frame_must_have_facts() {
         let mut i = input();
         i.frames = vec![frame(vec![id(2)], Some(checkpoint(1)))];
         assert!(matches!(i.validate(), Err(InputError::MissingCheckpointFacts(_))));
@@ -256,8 +259,9 @@ mod tests {
         assert!(i.validate().is_ok());
     }
 
+    /// 最近轮次里不能有帧或固定层，这两种正文不会混进最近历史。
     #[test]
-    fn 最近轮次里不能有帧或固定层() {
+    fn recent_may_not_contain_frames_or_fixed_layer() {
         let mut i = input();
         i.recent = vec![Node {
             id: id(3),
@@ -268,22 +272,25 @@ mod tests {
         assert!(matches!(i.validate(), Err(InputError::WrongRecentBody { .. })));
     }
 
+    /// 帧之间重叠被拒，一个节点不会被摘要两次。
     #[test]
-    fn 帧之间重叠被拒() {
+    fn overlapping_frames_are_rejected() {
         let mut i = input();
         i.frames = vec![frame(vec![id(1), id(2)], None), frame(vec![id(2), id(3)], None)];
         assert_eq!(i.validate(), Err(InputError::FramesOutOfOrder { index: 1 }));
     }
 
+    /// 完全包含的帧被拒，嵌套摘要永远不会被产出。
     #[test]
-    fn 完全包含的帧被拒() {
+    fn fully_contained_frame_is_rejected() {
         let mut i = input();
         i.frames = vec![frame(vec![id(1), id(2)], None), frame(vec![id(1), id(2), id(3)], None)];
         assert_eq!(i.validate(), Err(InputError::FramesOutOfOrder { index: 1 }));
     }
 
+    /// 不相邻但重叠的帧被拒，重叠即使不在相邻帧间也会被抓住。
     #[test]
-    fn 不相邻但重叠的帧被拒() {
+    fn non_adjacent_overlapping_frames_are_rejected() {
         let mut i = input();
         i.frames = vec![
             frame(vec![id(1), id(2)], None),
@@ -293,15 +300,17 @@ mod tests {
         assert_eq!(i.validate(), Err(InputError::FramesOutOfOrder { index: 2 }));
     }
 
+    /// 相邻但不重叠的帧被接受，连续的摘要允许。
     #[test]
-    fn 相邻但不重叠的帧被接受() {
+    fn adjacent_non_overlapping_frames_are_accepted() {
         let mut i = input();
         i.frames = vec![frame(vec![id(1), id(2)], None), frame(vec![id(3), id(4)], None)];
         assert!(i.validate().is_ok());
     }
 
+    /// 事实按检查点取回，帧能查到自己检查点的事实。
     #[test]
-    fn 事实按检查点取回() {
+    fn facts_retrieved_by_checkpoint() {
         let mut i = input();
         i.checkpoint_facts =
             vec![(checkpoint(1), CheckpointFacts { reachable: false, disk_matches: true })];

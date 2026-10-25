@@ -340,8 +340,9 @@ mod tests {
         (tree, s, token)
     }
 
+    /// 成功的追加把会话 head 移到新节点并增加代次，旧令牌随即失效。
     #[test]
-    fn 追加推进_head_并增加代次() {
+    fn append_advances_head_and_bumps_generation() {
         let (tree, s, token) = linear();
         assert_eq!(token.node, id(3));
         assert_eq!(token.generation, 2);
@@ -349,8 +350,9 @@ mod tests {
         assert_eq!(tree.len(), 3);
     }
 
+    /// 用过期的令牌追加被拒，且 head 保持不动。
     #[test]
-    fn 过期令牌的追加被拒() {
+    fn append_with_stale_token_is_rejected() {
         let (mut tree, s, token) = linear();
         let stale = HeadToken { session: s.clone(), node: id(1), generation: 0 };
         let err =
@@ -360,8 +362,9 @@ mod tests {
         assert_eq!(tree.head(&s), Some(token.clone()));
     }
 
+    /// 追加节点的父必须就是当前 head 而不是随便一个祖先，旧节点上不能嫁接分支。
     #[test]
-    fn 追加的父必须就是当前_head() {
+    fn append_parent_must_be_current_head() {
         let (mut tree, s, token) = linear();
         let err = tree
             .append(&s, token.clone(), turn(id(4), Some(id(1)), s.clone()))
@@ -369,8 +372,9 @@ mod tests {
         assert!(matches!(err, TreeError::NotDescendantOfHead { .. }));
     }
 
+    /// 重复的节点 id 被拒而不是静默覆盖，树的历史不会被冲掉。
     #[test]
-    fn 重复的节点_id_被拒而不是覆盖() {
+    fn duplicate_node_id_rejected_not_overwritten() {
         let (mut tree, s, token) = linear();
         let err = tree
             .append(&s, token.clone(), turn(id(2), Some(id(3)), s.clone()))
@@ -378,8 +382,9 @@ mod tests {
         assert!(matches!(err, TreeError::DuplicateNode(_)));
     }
 
+    /// 子会话的祖先链穿回父会话的节点而不被截断，父会话的 head 不受影响。
     #[test]
-    fn 祖先链跨会话不截断() {
+    fn ancestor_chain_not_truncated_across_sessions() {
         let (mut tree, parent_session, token) = linear();
         // 子会话从父会话的中间节点分叉。
         let child = session(2);
@@ -398,8 +403,9 @@ mod tests {
         assert_eq!(token2.node, id(4));
     }
 
+    /// 分叉新会话不复制祖先节点，树的节点总数不变。
     #[test]
-    fn 分叉不复制祖先节点() {
+    fn fork_does_not_copy_ancestor_nodes() {
         let (mut tree, _, _) = linear();
         let before = tree.len();
         tree.fork(session(2), id(2)).expect("应当可以分叉");
@@ -407,8 +413,9 @@ mod tests {
         assert_eq!(tree.len(), before, "分叉不应新增节点");
     }
 
+    /// 回退到祖先后再前进，指向同一节点的旧令牌仍然过期，因为代次不同。
     #[test]
-    fn 回退到祖先再前进时旧令牌失效() {
+    fn rewind_then_advance_invalidates_old_tokens() {
         let (mut tree, s, token) = linear();
         let rewound = tree.rewind(&s, token.clone(), id(2)).expect("回退应当成功");
         assert_eq!(rewound.node, id(2));
@@ -419,8 +426,9 @@ mod tests {
         assert!(tree.rewind(&s, stale, id(1)).is_err());
     }
 
+    /// 回退之后可以从祖先长出另一条分支，被丢弃的节点仍按 id 可取回。
     #[test]
-    fn 回退之后可以从祖先长出另一条分支() {
+    fn branch_can_grow_from_ancestor_after_rewind() {
         let (mut tree, s, token) = linear();
         let rewound = tree.rewind(&s, token.clone(), id(2)).expect("回退应当成功");
         let branched = tree
@@ -431,8 +439,9 @@ mod tests {
         assert!(tree.node(&id(3)).is_some());
     }
 
+    /// 回退只能到本会话 head 的祖先，回退到别的会话的节点被拒。
     #[test]
-    fn 回退只能到祖先() {
+    fn rewind_only_allowed_to_ancestor() {
         let (mut tree, s, token) = linear();
         let other = session(9);
         tree.fork(other, id(1)).expect("应当可以分叉");
@@ -440,8 +449,9 @@ mod tests {
         assert!(matches!(err, TreeError::UnknownNode(_)));
     }
 
+    /// 在从未初始化的会话下追加被拒，幽灵会话不能建节点。
     #[test]
-    fn 未知会话被拒() {
+    fn unknown_session_is_rejected() {
         let (mut tree, _, _) = linear();
         let ghost = session(7);
         let err = tree
@@ -454,16 +464,18 @@ mod tests {
         assert!(matches!(err, TreeError::UnknownSession(_)));
     }
 
+    /// 会话的根节点必须没有父，初始化时不能带悬空的父边。
     #[test]
-    fn 根节点必须没有父() {
+    fn root_node_must_have_no_parent() {
         let mut tree = Tree::new();
         let s = session(1);
         let err = tree.init(s.clone(), turn(id(1), Some(id(2)), s)).expect_err("应当被拒");
         assert!(matches!(err, TreeError::RootHasParent { .. }));
     }
 
+    /// 同一会话不能重复初始化，会话历史不会被静默重置。
     #[test]
-    fn 同一会话不能重复建立() {
+    fn same_session_cannot_be_created_twice() {
         let mut tree = Tree::new();
         let s = session(1);
         tree.init(s.clone(), turn(id(1), None, s.clone())).expect("首次应当成功");
@@ -471,14 +483,16 @@ mod tests {
         assert!(matches!(err, TreeError::SessionExists(_)));
     }
 
+    /// 从树里不存在的节点分叉被拒，分叉不会指向幻影。
     #[test]
-    fn 在未知节点上分叉被拒() {
+    fn fork_on_unknown_node_is_rejected() {
         let mut tree = Tree::new();
         assert!(matches!(tree.fork(session(1), id(5)), Err(TreeError::UnknownNode(_))));
     }
 
+    /// 两个子会话从同一节点分叉后，令牌只差会话字段，用 a 的令牌推进 b 必须被拒。
     #[test]
-    fn 两个子会话从同一节点分叉后令牌不可互换() {
+    fn head_tokens_not_interchangeable_after_fork_from_same_node() {
         // 这是 HeadToken 必须带会话的原因：同一父节点、同为第零代，两个令牌逐字段相同，
         // 若不含会话就无法区分。
         let (mut tree, _, _) = linear();
@@ -500,8 +514,9 @@ mod tests {
         assert!(tree.append(&b, token_b, turn(id(4), Some(id(2)), b.clone())).is_ok());
     }
 
+    /// 回退到树里不存在的节点时报未知节点，而不是静默截断祖先链。
     #[test]
-    fn 祖先链中断时报错而不是静默截断() {
+    fn broken_ancestor_chain_errors_not_silently_truncated() {
         let (mut tree, _, _) = linear();
         // 构造一个父节点不在树里的节点，模拟部分加载。
         let orphan = Node {
@@ -523,8 +538,9 @@ mod tests {
         let _ = orphan;
     }
 
+    /// 回退到当前 head 是允许的空操作，但仍增加代次，与真实回退可区分。
     #[test]
-    fn 回退到当前_head_是允许的空操作() {
+    fn rewind_to_current_head_is_allowed_noop() {
         let (mut tree, s, token) = linear();
         let same = tree.rewind(&s, token.clone(), id(3)).expect("应当成功");
         assert_eq!(same.node, id(3));

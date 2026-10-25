@@ -189,8 +189,9 @@ fn trigger_point(limit: u64, permille: u32) -> u64 {
 mod tests {
     use super::*;
 
+    /// 默认预算必须通过自身校验，且触发点为 170000，这是所有压缩相关用例的锚点。
     #[test]
-    fn 默认预算自洽() {
+    fn default_budget_is_self_consistent() {
         let b = Budget::defaults();
         assert!(
             Budget::new(
@@ -205,31 +206,35 @@ mod tests {
         assert_eq!(b.trigger_at(), 170_000);
     }
 
+    /// 触发点是包含边界：用量达到触发点即触发压缩，早一字节仍不触发。
     #[test]
-    fn 达到触发点即触发() {
+    fn compression_triggers_at_trigger_point_inclusive() {
         let b = Budget::defaults();
         assert!(!b.should_compress(169_999));
         assert!(b.should_compress(170_000));
         assert!(b.should_compress(200_000));
     }
 
+    /// 预留必须装进触发点与上限之间的空间，装不下则构造失败。
     #[test]
-    fn 预留装不下时构造失败() {
+    fn construction_fails_when_reserve_exceeds_headroom() {
         // 上限 100、触发 850 千分比 → 触发点 85、剩余 15；预留 20 装不下。
         let err = Budget::new(100, 850, 20, 3, 1024).expect_err("应当被拒");
         assert!(matches!(err, BudgetError::ReserveExceedsHeadroom { reserve: 20, headroom: 15 }));
     }
 
+    /// 同样的预留在低阈值下装得下、在高阈值下必然失败，阈值与预留互相制约。
     #[test]
-    fn 高阈值让预留更容易装不下() {
+    fn higher_threshold_makes_reserve_fit_harder() {
         // 同样上限与预留，阈值 95% 时剩余只有 5，必然失败。
         assert!(Budget::new(100, 950, 10, 3, 1024).is_err());
         // 阈值 50% 时剩余 50，同样预留可以通过。
         assert!(Budget::new(100, 500, 10, 3, 1024).is_ok());
     }
 
+    /// 六类非法参数各被自己的错误变体拒绝，变体之间不互相覆盖。
     #[test]
-    fn 非法参数逐个被拒() {
+    fn each_illegal_argument_is_rejected_with_its_own_error() {
         assert_eq!(Budget::new(0, 850, 1, 3, 1024), Err(BudgetError::ZeroLimit));
         assert!(matches!(
             Budget::new(100, 0, 1, 3, 1024),
@@ -247,8 +252,9 @@ mod tests {
         ));
     }
 
+    /// 用量超过上限时剩余空间为零而不是下溢，这是无符号减法的历史缺陷的回归守卫。
     #[test]
-    fn 剩余空间不会下溢() {
+    fn remaining_after_trigger_never_underflows() {
         let b = Budget::defaults();
         assert_eq!(b.remaining_after_trigger(0), 30_000);
         assert_eq!(b.remaining_after_trigger(170_000), 30_000);
@@ -256,14 +262,16 @@ mod tests {
         assert_eq!(b.remaining_after_trigger(999_999), 0);
     }
 
+    /// 触发点按截断计算，早一点压缩的代价远小于压缩请求自己发不出去的代价。
     #[test]
-    fn 触发点向下取整() {
+    fn trigger_point_is_floored() {
         // 999 * 850 / 1000 = 849.15 → 849，宁可早压一点。
         assert_eq!(trigger_point(999, 850), 849);
     }
 
+    /// 阈值为 1000 千分比时触发点等于上限，达到上限即触发压缩。
     #[test]
-    fn 百分百触发点等于上限() {
+    fn full_percent_trigger_point_equals_limit() {
         let b = Budget::new(100, 1000, 0, 3, 1024).expect("预留为零时应当通过");
         assert_eq!(b.trigger_at(), 100);
         assert!(b.should_compress(100));

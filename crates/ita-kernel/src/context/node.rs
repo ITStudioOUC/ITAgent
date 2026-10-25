@@ -189,23 +189,26 @@ mod tests {
         }
     }
 
+    /// 帧知道自己覆盖哪些节点，后续查找能判断某节点是否在帧内。
     #[test]
-    fn 帧记录自己覆盖的节点() {
+    fn frame_records_the_nodes_it_covers() {
         let f = frame(vec![id(1), id(2)]);
         assert!(f.covers_node(&id(1)));
         assert!(!f.covers_node(&id(3)));
     }
 
+    /// 帧的检查点是弱引用，不保证可达，构造时不校验。
     #[test]
-    fn 帧的检查点是弱引用() {
+    fn frame_checkpoint_is_a_weak_reference() {
         // 弱引用的含义是"不保证可达"，因此构造时不校验，可达性由解析时注入的事实决定。
         let mut f = frame(vec![]);
         f.checkpoint = Some(CheckpointId::parse("01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("合法"));
         assert!(f.checkpoint.is_some());
     }
 
+    /// 正文是帧的节点能取回该帧，非帧节点取不回。
     #[test]
-    fn 节点可以取回自己的帧() {
+    fn node_can_retrieve_its_own_frame() {
         let node = Node {
             id: id(1),
             parent: None,
@@ -216,8 +219,9 @@ mod tests {
         assert!(!node.is_fixed_layer());
     }
 
+    /// 固定层节点被识别为固定层而不是帧，两种正文不互相混淆。
     #[test]
-    fn 固定层节点可被识别() {
+    fn fixed_layer_node_is_recognizable() {
         let node = Node {
             id: id(1),
             parent: None,
@@ -231,8 +235,9 @@ mod tests {
         assert!(node.as_frame().is_none());
     }
 
+    /// 只有用户消息开启新的一轮，助手与工具节点不开轮，一轮按一次用户请求计。
     #[test]
-    fn 只有用户消息开启新的一轮() {
+    fn only_user_messages_open_a_new_turn() {
         let assistant = Node {
             id: id(1),
             parent: None,
@@ -256,8 +261,9 @@ mod tests {
         assert!(!tool.opens_turn());
     }
 
+    /// 工具结果的正文以哈希加长度的句柄承载而不是内联文本，完整输出可事后寻回。
     #[test]
-    fn 工具结果的正文以句柄承载() {
+    fn tool_result_body_is_carried_by_blob_handle() {
         let node = Node {
             id: id(1),
             parent: None,
@@ -274,8 +280,9 @@ mod tests {
         assert_eq!(blob.len, 1024);
     }
 
+    /// 待办是独立的正文变体：不开轮也不是帧，因此永远不会被摘要掉。
     #[test]
-    fn 待办是独立变体() {
+    fn todo_is_a_standalone_variant() {
         let node = Node {
             id: id(1),
             parent: None,

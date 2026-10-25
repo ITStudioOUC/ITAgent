@@ -246,8 +246,9 @@ mod tests {
         PathKey::new(s).expect("应当可以归一")
     }
 
+    /// 路径归一化去掉前导点斜杠、折叠重复斜杠、去掉尾斜杠，同一文件永远同一键。
     #[test]
-    fn 路径归一化去掉冗余分隔符() {
+    fn path_normalization_strips_redundant_separators() {
         assert_eq!(path("./a.rs").as_str(), "a.rs");
         assert_eq!(path("src//main.rs").as_str(), "src/main.rs");
         assert_eq!(path("src/").as_str(), "src");
@@ -255,22 +256,25 @@ mod tests {
         assert!(PathKey::new("./").is_none());
     }
 
+    /// 同一文件的不同写法归到同一键，拼写不一致的读与写仍然对得上。
     #[test]
-    fn 同一文件的不同写法归到同一键() {
+    fn different_spellings_of_same_file_map_to_same_key() {
         assert_eq!(path("./src/main.rs"), path("src/main.rs"));
         assert_eq!(path("src//main.rs"), path("src/main.rs"));
     }
 
+    /// 读到的是当前版本时写入被允许，未变化的文件不会被误判过期。
     #[test]
-    fn 读到同一版本时可以写入() {
+    fn write_allowed_when_same_version_read() {
         let mut set = ReadSet::new();
         let (w, a, p) = (workspace(1), session(1), path("a.rs"));
         set.record(&w, &p, a.clone(), "h1".to_owned(), 1);
         assert_eq!(set.judge(&w, &p, &a, "h1"), StaleVerdict::Fresh);
     }
 
+    /// 文件被改过之后写入被拒，错误里带上期望与实际两个哈希，调用方看得见分歧。
     #[test]
-    fn 别人改过之后写入被拒并给出两边的哈希() {
+    fn write_rejected_after_foreign_change_with_both_hashes() {
         let mut set = ReadSet::new();
         let (w, a, p) = (workspace(1), session(1), path("a.rs"));
         set.record(&w, &p, a.clone(), "h1".to_owned(), 1);
@@ -280,8 +284,9 @@ mod tests {
         );
     }
 
+    /// 没有读记录时判为未知而不是过期，首次写入不会被误拒。
     #[test]
-    fn 没有记录时判为未知而不是过期() {
+    fn no_record_judged_unknown_not_stale() {
         let set = ReadSet::new();
         assert_eq!(
             set.judge(&workspace(1), &path("new.rs"), &session(1), "h1"),
@@ -289,8 +294,9 @@ mod tests {
         );
     }
 
+    /// 每个会话各持自己的读记录，一个会话的重读不会让另一个会话的视图过期。
     #[test]
-    fn 不同会话各自持有自己的读记录() {
+    fn sessions_hold_their_own_read_records() {
         // 这是"只记最后一次读取"会出错的地方：A 读 h1、B 读 h2，A 的视图仍然是 h1。
         let mut set = ReadSet::new();
         let (w, p) = (workspace(1), path("a.rs"));
@@ -306,8 +312,9 @@ mod tests {
         );
     }
 
+    /// 不同工作区的同一相对路径互不影响，一个工作区的读不波及另一个。
     #[test]
-    fn 不同工作区的同一相对路径互不影响() {
+    fn same_relative_path_in_different_workspaces_independent() {
         let mut set = ReadSet::new();
         let (w1, w2, p) = (workspace(1), workspace(2), path("a.rs"));
         let a = session(1);
@@ -317,8 +324,9 @@ mod tests {
         assert_eq!(set.judge(&w2, &p, &a, "h1"), StaleVerdict::Unknown);
     }
 
+    /// 乱序到达的旧记录不覆盖新记录，迟到的读不会把文件版本倒退。
     #[test]
-    fn 乱序到达的旧记录不覆盖新记录() {
+    fn out_of_order_older_record_does_not_overwrite_newer() {
         let mut set = ReadSet::new();
         let (w, a, p) = (workspace(1), session(1), path("a.rs"));
         set.record(&w, &p, a.clone(), "h2".to_owned(), 5);
@@ -326,8 +334,9 @@ mod tests {
         assert_eq!(set.get(&w, &p, &a).expect("应当有记录").hash, "h2");
     }
 
+    /// 读旧、被改、重读、再判的完整序列以新鲜收尾，重读会清掉过期标记。
     #[test]
-    fn 完整序列_读旧_被改_重读_再判新鲜() {
+    fn full_sequence_stale_then_reread_then_fresh() {
         let mut set = ReadSet::new();
         let (w, a, p) = (workspace(1), session(1), path("a.rs"));
         set.record(&w, &p, a.clone(), "h1".to_owned(), 1);
@@ -336,8 +345,9 @@ mod tests {
         assert_eq!(set.judge(&w, &p, &a, "h2"), StaleVerdict::Fresh);
     }
 
+    /// 读者列表包含所有读过该文件的会话且按会话 id 有序，通知能逐个送达。
     #[test]
-    fn 读者列表包含所有读过该文件的会话且有序() {
+    fn readers_list_contains_all_sessions_that_read_in_order() {
         let mut set = ReadSet::new();
         let (w, p) = (workspace(1), path("a.rs"));
         let a = session(3);
@@ -349,8 +359,9 @@ mod tests {
         assert!(readers[0] < readers[1], "BTreeMap 保证按会话 id 升序");
     }
 
+    /// 过期通知只发给视图确实过期的读者，已重读最新版本的会话不被打扰。
     #[test]
-    fn 只把通知发给视图过期的读者() {
+    fn notifications_sent_only_to_readers_with_stale_views() {
         let mut set = ReadSet::new();
         let (w, p) = (workspace(1), path("a.rs"));
         let stale = session(1);
@@ -363,15 +374,17 @@ mod tests {
         assert_eq!(targets[0], &stale, "已重读最新版本的会话不该被打断");
     }
 
+    /// 没人读过的文件读者列表为空，对它的通知是空操作。
     #[test]
-    fn 没人读过时读者列表为空() {
+    fn readers_list_empty_when_nobody_read() {
         let set = ReadSet::new();
         assert!(set.readers(&workspace(1), &path("nobody.rs")).is_empty());
         assert!(set.stale_readers(&workspace(1), &path("nobody.rs"), "h1").is_empty());
     }
 
+    /// 会话结束时其读记录被清掉，判定退化为未知而不是报错。
     #[test]
-    fn 会话结束时记录被清掉() {
+    fn records_cleared_when_session_ends() {
         let mut set = ReadSet::new();
         let (w, p) = (workspace(1), path("a.rs"));
         let a = session(1);
@@ -387,8 +400,9 @@ mod tests {
         assert_eq!(set.judge(&w, &p, &a, "h1"), StaleVerdict::Unknown);
     }
 
+    /// 清空最后一个读者时路径项被整体移除，表里不积累死路径。
     #[test]
-    fn 清空最后一个读者时路径项被移除() {
+    fn path_entry_removed_when_last_reader_cleared() {
         let mut set = ReadSet::new();
         let (w, p) = (workspace(1), path("a.rs"));
         let a = session(1);
@@ -397,8 +411,9 @@ mod tests {
         assert!(set.readers(&w, &p).is_empty());
     }
 
+    /// 不同路径的读记录互不影响，一个文件的读不波及另一个文件的判定。
     #[test]
-    fn 不同路径互不影响() {
+    fn different_paths_do_not_affect_each_other() {
         let mut set = ReadSet::new();
         let (w, a) = (workspace(1), session(1));
         set.record(&w, &path("a.rs"), a.clone(), "h1".to_owned(), 1);

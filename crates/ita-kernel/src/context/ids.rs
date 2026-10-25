@@ -130,29 +130,33 @@ mod tests {
 
     const VALID: &str = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
+    /// 四种标识符都接受规范的 26 字符 Crockford base32 串。
     #[test]
-    fn 合法标识符被接受() {
+    fn valid_identifier_is_accepted() {
         assert!(NodeId::parse(VALID).is_ok());
         assert!(SessionId::parse(VALID).is_ok());
         assert!(WorkspaceId::parse(VALID).is_ok());
         assert!(CheckpointId::parse(VALID).is_ok());
     }
 
+    /// 长度不符的串被拒，且错误里带上实际长度，让调用方看见错在哪。
     #[test]
-    fn 长度不符被拒并报出实际长度() {
+    fn bad_length_is_rejected_and_reports_actual_length() {
         let err = NodeId::parse("short").expect_err("应当被拒");
         assert_eq!(err, IdError::BadLength { actual: 5 });
         assert!(err.to_string().contains('5'));
     }
 
+    /// 小写输入被拒而不是自动转大写，拼写错误不会被悄悄读成合法标识符。
     #[test]
-    fn 小写被拒而不是自动转换() {
+    fn lowercase_is_rejected_not_autocased() {
         let err = NodeId::parse(VALID.to_lowercase()).expect_err("应当被拒");
         assert!(matches!(err, IdError::BadChar { .. }));
     }
 
+    /// 首位只能是 0 到 7，这是 Crockford base32 对最高位的约束。
     #[test]
-    fn 首位只能是零到七() {
+    fn first_character_must_be_zero_to_seven() {
         for ch in ['8', '9', 'A', 'Z'] {
             let mut text = VALID.to_owned();
             text.replace_range(0..1, &ch.to_string());
@@ -165,8 +169,9 @@ mod tests {
         }
     }
 
+    /// 8 与 9 在非首位是合法的，约束只落在首位。
     #[test]
-    fn 数字八和九在非首位是合法的() {
+    fn eight_and_nine_are_legal_outside_first_position() {
         let mut text = VALID.to_owned();
         text.replace_range(25..26, "9");
         assert!(NodeId::parse(text.clone()).is_ok());
@@ -174,8 +179,9 @@ mod tests {
         assert!(NodeId::parse(text).is_ok());
     }
 
+    /// 字母表逐字符验证，被拒的只有 Crockford 排除的四个字母。
     #[test]
-    fn 字母表逐字符验证() {
+    fn alphabet_is_validated_character_by_character() {
         for ch in '0'..='9' {
             let mut text = VALID.to_owned();
             text.replace_range(25..26, &ch.to_string());
@@ -189,8 +195,9 @@ mod tests {
         }
     }
 
+    /// I、L、O、U 被拒，避免与 1、0 混淆；接受它们的解析器会把错标识符读成对的。
     #[test]
-    fn 易混字符被拒() {
+    fn confusable_characters_are_rejected() {
         // I、L、O、U 不在 Crockford 字母表里。
         for ch in ['I', 'L', 'O', 'U'] {
             let mut text = VALID.to_owned();
@@ -199,15 +206,17 @@ mod tests {
         }
     }
 
+    /// 解析出的标识符的文本形式必须等于原串，日志与传输往返不丢信息。
     #[test]
-    fn 文本形式可以往返() {
+    fn text_form_round_trips() {
         let id = NodeId::parse(VALID).expect("应当合法");
         assert_eq!(id.as_str(), VALID);
         assert_eq!(id.to_string(), VALID);
     }
 
+    /// 每种标识符类型暴露自己的中文名用于诊断，错误消息能说清是哪类标识符。
     #[test]
-    fn 类型名用于诊断() {
+    fn type_name_is_used_for_diagnostics() {
         assert_eq!(NodeId::kind(), "节点");
         assert_eq!(CheckpointId::kind(), "检查点");
     }

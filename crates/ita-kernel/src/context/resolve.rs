@@ -304,8 +304,9 @@ mod tests {
         }
     }
 
+    /// 四段按固定顺序出现，模型永远看到同一种布局。
     #[test]
-    fn 四段顺序固定() {
+    fn four_segment_order_is_fixed() {
         let mut input = base_input();
         input.frames.push(Frame {
             summary: "做了 A".to_owned(),
@@ -333,23 +334,26 @@ mod tests {
         );
     }
 
+    /// 同一输入两次解析逐字节相同，解析结果是输入的纯函数。
     #[test]
-    fn 同一输入两次解析逐字节相同() {
+    fn same_input_resolves_byte_identical_twice() {
         let input = base_input();
         let a = resolve(&input).expect("应当成功");
         let b = resolve(&input).expect("应当成功");
         assert_eq!(a, b);
     }
 
+    /// 固定层成为第一条系统消息，模型指令永远先于历史出现。
     #[test]
-    fn 固定层是第一条系统消息() {
+    fn fixed_layer_is_first_system_message() {
         let resolved = resolve(&base_input()).expect("应当成功");
         assert_eq!(resolved.messages[0].role, MessageRole::System);
         assert_eq!(resolved.messages[0].text, "系统提示");
     }
 
+    /// 用户与助手消息保留方向，模型能分清谁说了什么。
     #[test]
-    fn 用户与助手消息保留方向() {
+    fn user_and_assistant_messages_keep_direction() {
         let mut input = base_input();
         input
             .recent
@@ -367,8 +371,9 @@ mod tests {
         );
     }
 
+    /// 工具调用与结果各成一条消息，模型能把命令与输出配对。
     #[test]
-    fn 工具调用与结果各成一条消息() {
+    fn tool_call_and_result_each_become_one_message() {
         let mut input = base_input();
         input.recent = vec![
             node(1, NodeBody::ToolCall { command: "ita edit a.rs".to_owned() }),
@@ -380,8 +385,9 @@ mod tests {
         assert!(resolved.messages[2].text.contains("退出码 0"));
     }
 
+    /// 检查点可达但磁盘已变的帧带漂移说明，模型知道摘要可能过期。
     #[test]
-    fn 帧带漂移说明() {
+    fn frame_carries_drift_notice() {
         let mut input = base_input();
         let cp = checkpoint(1);
         input.frames.push(Frame {
@@ -399,8 +405,9 @@ mod tests {
         assert!(resolved.messages[2].text.contains("已被后续修改覆盖"));
     }
 
+    /// 检查点不可达且磁盘已变化时不报方向：此时无法判断哪边更新，任何方向词都会误导模型。
     #[test]
-    fn 不可达且已变化时不报方向() {
+    fn unreachable_and_changed_reports_unknown_direction() {
         let notice =
             Drift::from_facts(CheckpointFacts { reachable: false, disk_matches: false }).notice();
         assert!(notice.contains("无法判断方向"));
@@ -408,8 +415,9 @@ mod tests {
         assert!(!notice.contains("更旧"));
     }
 
+    /// 四种漂移组合各有不同的措辞，模型能分辨它们。
     #[test]
-    fn 四种漂移各有不同的措辞() {
+    fn four_drifts_each_have_distinct_wording() {
         let combos = [(true, true), (true, false), (false, true), (false, false)];
         let notices: Vec<&str> = combos
             .iter()
@@ -421,16 +429,18 @@ mod tests {
         assert_eq!(unique.len(), 4, "四种组合必须有四种不同措辞");
     }
 
+    /// 待办放在最后一段，是模型看到的最近内容。
     #[test]
-    fn 待办放在最后一段() {
+    fn todo_placed_in_last_segment() {
         let resolved = resolve(&base_input()).expect("应当成功");
         let last = resolved.messages.last().expect("应当有消息");
         assert_eq!(last.segment, Segment::Current);
         assert!(last.text.contains("写测试"));
     }
 
+    /// 通知也放在当前段，不会被埋进历史。
     #[test]
-    fn 通知也放在当前段() {
+    fn notice_also_placed_in_current_segment() {
         let mut input = base_input();
         input
             .current
@@ -439,8 +449,9 @@ mod tests {
         assert!(resolved.messages.iter().any(|m| m.text.contains("其他会话修改")));
     }
 
+    /// 字节数是正文总长度，与预算不是同一量纲，不能混用。
     #[test]
-    fn 字节数是正文总长度且不与预算混用() {
+    fn byte_count_is_body_length_not_budget() {
         let resolved = resolve(&base_input()).expect("应当成功");
         let manual: u64 = resolved.messages.iter().map(|m| m.text.len() as u64).sum();
         assert_eq!(resolved.body_bytes, manual);
@@ -449,8 +460,9 @@ mod tests {
         assert!(resolved.body_bytes < 1024);
     }
 
+    /// 帧没有检查点时明确说明无法核对，模型知道摘要不可验证。
     #[test]
-    fn 帧没有检查点时明确说明无法核对() {
+    fn frame_without_checkpoint_explains_cannot_verify() {
         let mut input = base_input();
         input.frames.push(Frame {
             summary: "做了 A".to_owned(),
@@ -463,8 +475,9 @@ mod tests {
         assert!(resolved.drift.is_empty(), "无检查点的帧不产生漂移记录");
     }
 
+    /// 空覆盖的帧被拒，空摘要永远不会被产出。
     #[test]
-    fn 空覆盖的帧被拒() {
+    fn frame_with_empty_coverage_is_rejected() {
         let mut input = base_input();
         input.frames.push(Frame {
             summary: "空".to_owned(),
@@ -475,8 +488,9 @@ mod tests {
         assert!(resolve(&input).is_err());
     }
 
+    /// 最近段里的通知保持最近段标签，段标签由所在位置决定而不是由正文种类决定。
     #[test]
-    fn 最近段里的通知保持最近段标签() {
+    fn notice_in_recent_segment_keeps_recent_label() {
         let mut input = base_input();
         input.recent.push(node(6, NodeBody::Notice { text: "几轮前文件被改过".to_owned() }));
         let resolved = resolve(&input).expect("应当成功");
@@ -485,8 +499,9 @@ mod tests {
         assert_eq!(notice.segment, Segment::Recent, "段标签应由所在位置决定");
     }
 
+    /// 帧的覆盖数写进正文，模型知道有多少个节点被摘要。
     #[test]
-    fn 帧覆盖数写进正文() {
+    fn frame_coverage_count_written_into_body() {
         let mut input = base_input();
         input.frames.push(Frame {
             summary: "做了 A".to_owned(),
@@ -498,8 +513,9 @@ mod tests {
         assert!(resolved.messages[1].text.contains("3 个更早的节点"));
     }
 
+    /// 固定层不是固定层的输入被拒，畸形输入不会到达模型。
     #[test]
-    fn 非法输入被拒() {
+    fn illegal_input_is_rejected() {
         let mut input = base_input();
         input.fixed_layer = node(9, NodeBody::Turn { role: TurnRole::User, text: "x".to_owned() });
         assert!(resolve(&input).is_err());
