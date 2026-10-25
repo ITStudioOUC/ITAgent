@@ -149,7 +149,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 06.8 | 回滚对齐：写回、删除与残留清单 | .w1mer/detail/05_plan-06.md | done | 0 | 回滚对齐落地：独立动词 Store::align 沿链从基线折叠到目标读有效状态，折叠提取为共享模块与 squash 共用同一套左结合覆盖加墓碑删除，范围是参数存储层不解析工具清单，四种情况全处理（写回、覆盖、墓碑删除、范围内新建删除），超阈值条目只报告从不删除不覆盖，写回前核对 blobs 行缺失不写回残留清单标注内容缺失，外部改动检测是磁盘与目标哈希不一致默认拒绝 force 覆盖；十条验收全过，372 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 06.9 | 标记清除 GC：快照根、租约根与宽限期 | .w1mer/detail/05_plan-06.md | done | 0 | 标记清除 GC 落地：回收是全局标记-清除加宽限期不是引用计数，标记根是 snapshot_entries.hash、nodes.body_hash、events.payload_hash 三张表加 extra_roots 参数（租约根），宽限期是两观协议（第一次观察只写 unreferenced_since 不删、第二次观察且超宽限期才删），删除顺序行先行文件随后（行删在事务内、文件删在提交后），孤儿文件清扫（无 blob 行的文件含 .tmp）是回收的一部分；十条验收全过，395 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 07.1 | 拓扑类型与依赖无环校验 | .w1mer/detail/06_plan-07.md | done | 0 | unit 拓扑类型与三种依赖的无环校验落地：UnitId 标签名义类型、DepKind 三变体方向语义一致、find_cycle 三色标记对三种边并集判定、startup_order 是词典序最小的拓扑序，lease 与 tools 双向记号落单方向边；十条验收全过，413 项测试全绿 |
-| 07.2 | 状态机、就绪探针与停止顺序 | .w1mer/detail/06_plan-07.md | done | 0 | unit 状态机、就绪探针与监督者落地：六状态机加纯转移函数、三值探针加可注入 trait、监督者按拓扑序启动逆拓扑序停止，失败不级联重启；十条验收全过，430 项测试全绿，版本推进留待评审与探索者收尾后统一处理 |
+| 07.2 | 状态机、就绪探针与停止顺序 | .w1mer/detail/06_plan-07.md | done | 0 | unit 状态机、就绪探针与监督者落地：六状态加纯转移函数非法转移返回 None、就绪探针三值结果加可注入 trait、监督者按拓扑序启动逆序停止失败不级联重启；十条验收全过，430 项测试全绿 |
 | 07.3 | 必需与非必需启动门与降级 | .w1mer/detail/06_plan-07.md | todo | 0 |
 | 07.4 | 能力集快照与变更推送 | .w1mer/detail/06_plan-07.md | todo | 0 |
 | 08.1 | Invocation 信封与版本协商 | .w1mer/detail/07_plan-08.md | todo | 0 |
