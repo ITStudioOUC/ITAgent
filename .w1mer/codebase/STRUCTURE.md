@@ -21,11 +21,15 @@ ita-worker         workspace worker process (stateless)
 ita-cli            the `ita` binary (role dispatch: master|worker|tool-host)
 ```
 
-**Status.** Epics 01–05 are complete: the kernel holds the command grammar, the context
+**Status.** Epics 01–06 are complete. The kernel holds the command grammar, the context
 tree with pure `resolve()`, and the semantic-compression planning modules. `ita-store`
-has opened epic 06 — the database handle, migration runner, workspace scope and initial
-schema are done (`06.1`–`06.2`); event/CAS/snapshot writes are still open (`06.3`
-onward). The remaining crates are shells whose responsibilities above are still targets. `ita-kernel` has no dependencies
+has completed the full storage epic: database handle, migration runner, workspace scope,
+initial schema, event append with seq allocation and preview truncation, frame write with
+head compare-and-swap, content-addressed storage with dedup and atomic rename, snapshot
+manifest with entry-shape validation and blobs assertion, baseline-plus-incremental squash
+with rebaseline, rollback alignment with write-back and residual list, and mark-sweep GC
+with snapshot/lease roots and the two-observation grace period. The remaining crates are
+shells whose responsibilities above are still targets. `ita-kernel` has no dependencies
 at all — not even dev-dependencies — enforced by
 `.w1mer/scripts/check_kernel_purity.sh` plus `crates/ita-kernel/clippy.toml`. Role
 dispatch lives in `crates/ita-cli/src/role.rs`.
