@@ -8,5 +8,6 @@ license.workspace = true
 
 [dependencies]
 ita-kernel = { path = "../ita-kernel" }
+blake3.workspace = true
 rusqlite.workspace = true
 ulid.workspace = true

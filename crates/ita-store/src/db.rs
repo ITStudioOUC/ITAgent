@@ -7,11 +7,12 @@
 //! 写路径的纪律在这里落地：单连接、`BEGIN IMMEDIATE`、`busy_timeout`。不使用延迟事务，
 //! 因为它会在提交时才升级锁，产生无法重试的 `SQLITE_BUSY`。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use ita_kernel::context::{NodeId, SessionId};
+use ita_kernel::context::{BlobRef, NodeId, SessionId};
 use rusqlite::Connection;
 
+use crate::cas;
 use crate::events::{self, AppendedEvent, Event, NewEvent};
 use crate::migrate::{self, MigrateError};
 use crate::preview::PreviewLimit;
@@ -42,6 +43,10 @@ pub enum StoreError {
     HeadConflict,
     /// 帧引用的会话或节点属于另一工作区。
     CrossWorkspace(String),
+    /// 内容寻址存储的文件系统操作失败。
+    Cas(std::io::Error),
+    /// 按哈希读回内容时，行不存在。
+    BlobNotFound(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -61,6 +66,8 @@ impl std::fmt::Display for StoreError {
             Self::UnknownNode(id) => write!(f, "事件引用的节点 {id} 不属于本工作区"),
             Self::HeadConflict => write!(f, "head 比较并交换冲突：期望的节点与代次不再是当前值"),
             Self::CrossWorkspace(id) => write!(f, "帧引用的会话或节点 {id} 属于另一工作区"),
+            Self::Cas(e) => write!(f, "内容寻址存储写入失败：{e}"),
+            Self::BlobNotFound(hash) => write!(f, "内容寻址存储里没有哈希 {hash} 对应的行"),
         }
     }
 }
@@ -82,6 +89,8 @@ impl From<MigrateError> for StoreError {
 /// 数据库句柄。
 pub struct Store {
     conn: Connection,
+    /// 内容寻址存储的根目录，数据库文件同级的 `blobs` 目录。懒创建：首次写入时才建。
+    cas_root: PathBuf,
 }
 
 impl Store {
@@ -97,22 +106,24 @@ impl Store {
     /// "只有 server 打开数据库"这条进程模型保证的。
     ///
     /// # 副作用
-    /// 创建文件、写库结构、可能创建 WAL 与 SHM 文件。
+    /// 创建文件、写库结构、可能创建 WAL 与 SHM 文件。CAS 根目录不在这里建，首次写入时才建。
     pub fn open(path: &Path) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
-        Self::configure(conn)
+        Self::configure(conn, cas_root_for(path))
     }
 
     /// 打开一个内存库，仅供测试。
     ///
     /// # 副作用
-    /// 无持久化副作用。
+    /// 无持久化副作用。CAS 根目录用临时路径，每个库一个。
     pub fn open_in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
-        Self::configure(conn)
+        // 内存库没有数据库文件，CAS 根目录落在临时目录，每个库一个，互不干扰。
+        let cas_root = std::env::temp_dir().join(format!("ita-cas-{}", ulid::Ulid::new()));
+        Self::configure(conn, cas_root)
     }
 
-    fn configure(mut conn: Connection) -> Result<Self, StoreError> {
+    fn configure(mut conn: Connection, cas_root: PathBuf) -> Result<Self, StoreError> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         // 5 秒忙等：写事务冲突时自动重试，而不是立刻抛 SQLITE_BUSY。
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -121,7 +132,7 @@ impl Store {
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
 
         migrate::run(&mut conn)?;
-        Ok(Self { conn })
+        Ok(Self { conn, cas_root })
     }
 
     /// 打开一个文件库并确认 WAL 真的生效。
@@ -139,7 +150,7 @@ impl Store {
         if !mode.eq_ignore_ascii_case("wal") {
             return Err(StoreError::WalUnavailable(mode));
         }
-        Self::configure(conn)
+        Self::configure(conn, cas_root_for(path))
     }
 
     /// 注册一个工作区。
@@ -253,6 +264,40 @@ impl Store {
         events::read_after(self.conn(), scope, after_seq, limit)
     }
 
+    /// 写入一段内容到内容寻址存储，返回引用。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内写入内容：去重、原子写文件、插行。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// 写入是权威写，提交后才返回。返回的哈希与长度代表已持久化的内容。CAS 是全局的，
+    /// 不带作用域参数。
+    ///
+    /// # 副作用
+    /// 写 CAS 目录下的文件，写 `blobs` 表。
+    pub fn put(&mut self, content: &[u8]) -> Result<BlobRef, StoreError> {
+        // 先取出 CAS 根路径，避免与可变连接借用冲突。
+        let cas_root = self.cas_root.clone();
+        let tx = self.conn_mut().transaction()?;
+        let result = cas::put_in(&tx, &cas_root, content)?;
+        tx.commit()?;
+        Ok(result)
+    }
+
+    /// 按哈希读回内容。
+    ///
+    /// # 边界与前提
+    /// 行不存在返回 [`StoreError::BlobNotFound`]；行存在但文件读失败返回
+    /// [`StoreError::Cas`]。只读，不自行开事务。
+    ///
+    /// # 副作用
+    /// 读文件系统。
+    pub fn get(&self, hash: &str) -> Result<Vec<u8>, StoreError> {
+        cas::get_in(self.conn(), &self.cas_root, hash)
+    }
+
     /// 供 crate 内部模块使用的连接。
     ///
     /// # 边界与前提
@@ -287,6 +332,23 @@ impl Store {
     pub fn conn_for_test(&self) -> &Connection {
         &self.conn
     }
+
+    /// 供集成测试检查 CAS 根目录的路径。
+    ///
+    /// # 边界与前提
+    /// 只在测试里可用（`#[doc(hidden)]` + 测试专用名字），业务代码不应调用。
+    ///
+    /// # 副作用
+    /// 无。
+    #[doc(hidden)]
+    pub fn cas_root_for_test(&self) -> &Path {
+        &self.cas_root
+    }
+}
+
+/// 从数据库文件路径派生 CAS 根目录：数据库文件同级的 `blobs` 目录。
+fn cas_root_for(path: &Path) -> PathBuf {
+    path.parent().map(|p| p.join("blobs")).unwrap_or_else(|| PathBuf::from("blobs"))
 }
 
 /// 当前时间（epoch 毫秒）。

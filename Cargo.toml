@@ -28,3 +28,5 @@ repository = "https://github.com/ITStudioOUC/ITAgent"
 rusqlite = { version = "0.32", features = ["bundled"] }
 # 时间与 id：ULID 需要时间戳，内核不碰时间，所以放在存储层。
 ulid = "1"
+# 内容寻址存储的哈希：blake3，不用 sha256，因为每次工具调用后都要算它，速度差一个量级。
+blake3 = "1"

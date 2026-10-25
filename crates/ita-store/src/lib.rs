@@ -10,6 +10,8 @@
 //!
 //! 迁移只允许加表加列，不改不删：事件表是不可变的真相，删列会让历史无法 replay。
 
+mod blobs;
+mod cas;
 pub mod commit;
 pub mod db;
 pub mod events;
