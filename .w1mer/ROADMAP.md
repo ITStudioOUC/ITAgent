@@ -144,7 +144,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 06.3 | 事件追加、seq 分配与预览截断 | .w1mer/detail/05_plan-06.md | done | 0 | 事件追加与 seq 计数器分配落地：seq 从 workspace_seq 计数器读改写、分配与插入同一立即事务，预览按头 4 KiB 尾 1 KiB 截断并回退字符边界，会话与节点归属在事务内校验、失败回滚不消耗计数器，事件 id 放内核复用 id_type 校验；14 条验收全过，283 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 06.4 | 帧写入与 head 比较并交换 | .w1mer/detail/05_plan-06.md | done | 0 | 帧写入与 head 比较并交换落地：帧正文用长度前缀文本可逆编码写进 inline_body，head CAS 一条 UPDATE 同时匹配节点与代次（ABA 防护），事务内顺序是插帧节点、CAS、追加事件，冲突不写帧行不动 head 不烧 seq，跨工作区校验覆盖会话、父节点、覆盖列表三个位置，prompt_version 不进帧正文；九条验收全过，303 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 06.5 | CAS 写入、去重与原子改名 | .w1mer/detail/05_plan-06.md | done | 0 | 内容寻址存储写入、去重与原子改名落地：哈希用 blake3（新增工作区依赖），CAS 根目录是数据库同级的 blobs 目录懒创建，原子写入是临时文件、同步、改名同目录才原子，去重先查 blobs 行存在则跳过写入，写入顺序文件先行行随后中断只留无引用文件，put 与 get 同批提供；八条验收全过，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
-| 06.6 | 快照清单：文件、墓碑与超阈值 | .w1mer/detail/05_plan-06.md | todo | 0 |
+| 06.6 | 快照清单：文件、墓碑与超阈值 | .w1mer/detail/05_plan-06.md | done | 0 | 快照清单创建与读取落地：条目三种类枚举让非法形状不可表示，seq 用 COALESCE(MAX(seq),0)+1 在立即事务内分配，父边由存储自动链接（首个快照 baseline 父 NULL，其余 incremental 父指向最高 seq 快照），快照 id 复用内核 CheckpointId，content_stored 为 1 的条目其 hash 必在 blobs 里由事务内 SELECT EXISTS 断言而不加外键，读路径覆盖快照元信息与清单且跨工作区靠 join 校验；十四条验收全过，339 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 06.7 | 基线加增量 squash 与重定基线 | .w1mer/detail/05_plan-06.md | todo | 0 |
 | 06.8 | 回滚对齐：写回、删除与残留清单 | .w1mer/detail/05_plan-06.md | todo | 0 |
 | 06.9 | 标记清除 GC：快照根、租约根与宽限期 | .w1mer/detail/05_plan-06.md | todo | 0 |

@@ -47,6 +47,7 @@
 | R_06_2_3 |  | ok | [R_06_2_3.md](R_06_2_3.md) |
 | R_06_3 |  | ok | [R_06_3.md](R_06_3.md) |
 | R_06_4 |  | ok | [R_06_4.md](R_06_4.md) |
+| R_06_5 |  | ok | [R_06_5.md](R_06_5.md) |
 <!-- /w1mer:rows -->
 
 ## Reviewer checklist

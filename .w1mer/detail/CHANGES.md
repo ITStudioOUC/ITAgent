@@ -394,3 +394,20 @@ state: active
   不校验。`StoreError` 新增 `HeadConflict` 与 `CrossWorkspace` 两个变体，`lib.rs` 声明
   `commit` 与 `heads` 两个模块并导出公开类型。`nodes.body_kind` 的取值域 `'frame'` 是 06.4
   引入的第一个节点正文种类值，`nodes.body_kind` 没有取值域 CHECK，完整词表留给后续批次统一补。
+- 批次 06.5 新增 `crates/ita-store/src/{cas,blobs}.rs` 与集成测试 `tests/cas.rs`，
+  存储层首次对外暴露内容寻址写入与读回，版本推进到 0.1.37。契约层面新增一组形状：
+  `Store::put` 在单个立即事务内做三件事——去重（先查 `blobs` 行、存在则跳过写入）、
+  原子写文件（临时文件、`sync_data`、`rename` 同目录三步，固定后缀 `.tmp`）、插行
+  （`INSERT OR IGNORE`），顺序是文件先行、行随后，中断只留下无引用文件；`Store::get`
+  按哈希读回，行不存在返回 `BlobNotFound`、行存在但文件读失败返回 `Cas`。哈希算法固定为
+  blake3（256 位、64 字符十六进制），不是 sha256，新增工作区依赖 `blake3 = "1"`。
+  CAS 根目录是数据库文件同级的 `blobs` 目录，懒创建（首次 `put` 时建，不在 `open` 时建），
+  `Store` 新增 `cas_root: PathBuf` 私有字段，`open` 与 `open_with_wal` 从数据库路径派生、
+  `open_in_memory` 用临时路径。`BlobRef` 是内核 `ita-kernel` 的类型（`context/node.rs`），
+  `put` 返回它、`get` 读回 `Vec<u8>`，`ita-store` 依赖 `ita-kernel` 可直接返回，不新增内核依赖。
+  `StoreError` 新增 `Cas(std::io::Error)` 与 `BlobNotFound(String)` 两个变体，`lib.rs` 声明
+  `cas` 与 `blobs` 两个私有模块（`pub(crate)`），公开 API 仍是 `Store` 与 `StoreError`，
+  与"操作级接口"的存储层纪律一致。`blobs.hash` 列没有 64 字符十六进制的 CHECK 约束，
+  哈希格式由写入路径（`hash_hex`）承接，表结构不保证格式，与 06.2 系列"表结构只保证 ADR
+  明写的形状，剩下的由代码路径断言"的裁决同型。`unreferenced_since` 在 `put` 时恒为 NULL，
+  宽限期起点由 06.9 回收扫描观察"变为无引用"的时刻写入，创建时间不能顶替它。
