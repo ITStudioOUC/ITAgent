@@ -411,3 +411,20 @@ state: active
   哈希格式由写入路径（`hash_hex`）承接，表结构不保证格式，与 06.2 系列"表结构只保证 ADR
   明写的形状，剩下的由代码路径断言"的裁决同型。`unreferenced_since` 在 `put` 时恒为 NULL，
   宽限期起点由 06.9 回收扫描观察"变为无引用"的时刻写入，创建时间不能顶替它。
+- 批次 06.6 新增 `crates/ita-store/src/{snapshots,entries}.rs` 与集成测试 `tests/snapshots.rs`，
+  存储层首次对外暴露快照清单的创建与读取，版本推进到 0.1.38。契约层面新增一组形状：
+  `Store::create_snapshot` 在单个立即事务内做四件事——分配 seq（`COALESCE(MAX(seq),0)+1`，
+  表内推导而非计数器，快照 seq 是序号不是游标、不会被归档搬走）、自动链接父边（取该工作区
+  seq 最大的快照作父，没有则父为空、kind 取 `baseline`，否则取 `incremental`）、插入快照行、
+  逐条插入清单条目，任一步失败整笔回滚；`Store::snapshot` 与 `Store::snapshot_entries` 是只读
+  读路径，跨工作区校验靠 join `snapshots.workspace_id`（`snapshot_entries` 表不带工作区列）。
+  快照 id 复用内核 `CheckpointId`（ULID 26 字符 Crockford base32、首位 0 到 7，与 `id_type!`
+  校验相容），不新增 `SnapshotId`。`SnapshotEntry` 是 file/dir/tombstone 三 kind 枚举，非法
+  形状不可表示：墓碑没有 `content_stored`/`mode`/`mtime` 字段，目录没有 `hash`/`size`，
+  只有文件带内容标记；`content_stored = 0` 却缺 `mtime` 这一唯一无法类型层面不可表示的形状，
+  由写入路径以 `InvalidEntryShape` 拒绝。`content_stored = 1` 的条目其 hash 必在 `blobs` 里，
+  由写入路径在事务内用 `SELECT EXISTS` 断言（`MissingBlob` 错误变体），不加外键——超阈值条目
+  （`content_stored = 0`）带哈希却没有 blob，加外键会把正常条目判成悬空。`StoreError` 新增
+  `MissingBlob`、`UnknownSnapshot`、`InvalidEntryShape` 三个变体，`lib.rs` 声明 `snapshots`
+  与 `entries` 两个私有模块并导出 `SnapshotEntry`、`CreatedSnapshot`、`SnapshotInfo`。
+  读路径成为 06.7 squash 与 06.8 回滚对齐的公共依赖，与 06.5 把 `get` 收进本批同型。
