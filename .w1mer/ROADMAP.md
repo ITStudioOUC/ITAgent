@@ -56,6 +56,8 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | 02.5 | 上层空壳与依赖方向 | .w1mer/detail/01_plan-02.md | done | 0 | 九个成员齐备，server 依赖 store/proto/model/workflow，内核仍是零依赖；版本 0.1.5 |
 | 02.6 | 单二进制角色分发与 worker 空壳 | .w1mer/detail/01_plan-02.md | done | 0 | ita 二进制可按角色分发，版本来自清单，三个角色占位退出 0、未知角色退出 2；九项测试全绿，CI 的空测试集豁免已按标注删除；版本 0.1.6 |
 | 02.7 | 收口：文档同步与骨架验收 | .w1mer/detail/01_plan-02.md | done | 0 | 十一个 crate 与目录一一对应，STACK 的五条命令与 CI 逐条一致且都带锁，STRUCTURE 增加状态段区分目标与现状；版本 0.1.7，骨架史诗完成 |
+| 02.8 | 分层与能力归属门：依赖方向由 CI 检查 | .w1mer/detail/01_plan-02.md | todo | 0 | |
+
 
 
 
