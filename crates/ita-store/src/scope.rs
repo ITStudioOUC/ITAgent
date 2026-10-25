@@ -46,8 +46,9 @@ impl WorkspaceScope {
 mod tests {
     use super::*;
 
+    /// 作用域携带工作区 id，业务查询永远绑定到单个工作区。
     #[test]
-    fn 作用域携带工作区() {
+    fn scope_carries_workspace() {
         let id = WorkspaceId::parse("01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("应当合法");
         let scope = WorkspaceScope::new(id.clone());
         assert_eq!(scope.workspace(), &id);

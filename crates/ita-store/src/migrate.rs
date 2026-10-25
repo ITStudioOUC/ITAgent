@@ -225,16 +225,18 @@ mod tests {
         conn
     }
 
+    /// 首次迁移建表并记录版本，空库落在最新版表结构。
     #[test]
-    fn 首次迁移建表并记录版本() {
+    fn first_migration_creates_tables_and_records_version() {
         let mut conn = memory();
         let version = run(&mut conn).expect("迁移应当成功");
         assert_eq!(version, 2);
         assert_eq!(current_version(&conn).expect("应当可读"), 2);
     }
 
+    /// 重复执行不重复建表也不报错，迁移是幂等的。
     #[test]
-    fn 重复执行不重复建表也不报错() {
+    fn repeated_run_does_not_recreate_tables_or_error() {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         let version = run(&mut conn).expect("重复执行应当成功");
@@ -246,8 +248,9 @@ mod tests {
         assert_eq!(count, 2, "版本行不应重复");
     }
 
+    /// 版本出现空洞时拒绝继续，跳版本的库不会被悄悄升级。
     #[test]
-    fn 版本出现空洞时拒绝继续() {
+    fn version_gap_refuses_to_continue() {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         // 手工制造空洞：删掉版本 1 再插入 3。
@@ -262,8 +265,9 @@ mod tests {
         assert!(matches!(err, MigrateError::VersionGap { expected: 1, found: 3 }));
     }
 
+    /// 已执行脚本内容变化时拒绝启动，已发布的迁移不会被悄悄改动。
     #[test]
-    fn 已执行脚本内容变化时拒绝启动() {
+    fn modified_applied_script_refuses_startup() {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         // 模拟"有人改了已发布的迁移脚本"：把记录的哈希改掉。
@@ -272,8 +276,9 @@ mod tests {
         assert!(matches!(err, MigrateError::ScriptChanged { version: 1 }));
     }
 
+    /// 数据库版本高于程序支持时拒绝启动，旧二进制不会打开新库。
     #[test]
-    fn 数据库版本高于程序支持时拒绝启动() {
+    fn newer_database_version_refuses_startup() {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         conn.execute(
@@ -286,8 +291,9 @@ mod tests {
         assert!(matches!(err, MigrateError::DatabaseNewer { database: 3, supported: 2 }));
     }
 
+    /// 脚本里不允许破坏性语句，只加不改的纪律靠扫描守住。
     #[test]
-    fn 脚本里不允许破坏性语句() {
+    fn destructive_statements_forbidden_in_scripts() {
         // 纪律靠扫描守住：只加不改不是靠自觉。
         for migration in MIGRATIONS {
             let upper = migration.sql.to_uppercase();
@@ -297,8 +303,9 @@ mod tests {
         }
     }
 
+    /// 脚本可重复执行，表已存在时再跑一遍 SQL 不失败。
     #[test]
-    fn 脚本可重复执行() {
+    fn scripts_are_re_executable() {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         // 表已存在时再跑一遍迁移 SQL 不应失败（脚本自带 IF NOT EXISTS）。

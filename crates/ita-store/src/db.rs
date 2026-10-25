@@ -254,14 +254,16 @@ mod tests {
         WorkspaceId::parse(text).expect("应当合法")
     }
 
+    /// 打开时跑完迁移，返回的库一定是最新版表结构。
     #[test]
-    fn 打开时跑完迁移() {
+    fn migrations_completed_on_open() {
         let store = Store::open_in_memory().expect("应当可以打开");
         assert_eq!(store.schema_version().expect("应当可读"), 2);
     }
 
+    /// 注册工作区后可以取作用域，业务查询能绑定到该工作区。
     #[test]
-    fn 注册工作区后可以取作用域() {
+    fn scope_obtainable_after_workspace_registration() {
         let mut store = Store::open_in_memory().expect("应当可以打开");
         let id = workspace(ID_A);
         store.create_workspace(&id, "/tmp/ws").expect("应当成功");
@@ -270,15 +272,17 @@ mod tests {
         assert_eq!(store.workspace_count().expect("应当可读"), 1);
     }
 
+    /// 未注册的工作区取作用域被拒，查询不会绑定到幻影工作区。
     #[test]
-    fn 未注册的工作区取作用域被拒() {
+    fn scope_for_unregistered_workspace_rejected() {
         let store = Store::open_in_memory().expect("应当可以打开");
         let err = store.scope(&workspace(ID_B)).expect_err("应当被拒");
         assert!(matches!(err, StoreError::UnknownWorkspace(_)));
     }
 
+    /// 重复注册同一工作区被拒，工作区路径不会被静默覆盖。
     #[test]
-    fn 重复注册同一工作区被拒() {
+    fn duplicate_workspace_registration_rejected() {
         let mut store = Store::open_in_memory().expect("应当可以打开");
         let id = workspace(ID_A);
         store.create_workspace(&id, "/tmp/ws").expect("首次应当成功");
@@ -286,16 +290,18 @@ mod tests {
         assert!(matches!(err, StoreError::WorkspaceExists(_)));
     }
 
+    /// 多个工作区互不影响，注册一个不波及其它工作区。
     #[test]
-    fn 多个工作区互不影响() {
+    fn multiple_workspaces_do_not_interfere() {
         let mut store = Store::open_in_memory().expect("应当可以打开");
         store.create_workspace(&workspace(ID_A), "/tmp/a").expect("应当成功");
         store.create_workspace(&workspace(ID_B), "/tmp/b").expect("应当成功");
         assert_eq!(store.workspace_count().expect("应当可读"), 2);
     }
 
+    /// 外键约束已开启，引用不存在工作区的行会被拦住。
     #[test]
-    fn 外键约束已开启() {
+    fn foreign_key_constraints_are_on() {
         let store = Store::open_in_memory().expect("应当可以打开");
         // 直接插一条引用不存在工作区的会话，应当被外键拦住。
         let result = store.conn().execute(

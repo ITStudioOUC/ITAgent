@@ -62,8 +62,9 @@ fn content_tables_and_indexes_exist() {
     }
 }
 
+/// 快照条目的主键是快照加路径，同一快照内同一路径不能有两条。
 #[test]
-fn 快照条目的主键是快照加路径() {
+fn snapshot_entry_primary_key_is_snapshot_plus_path() {
     let store = store_with_workspace();
     let conn = store.conn_for_test();
     insert_baseline(conn, SNAPSHOT);
@@ -80,8 +81,9 @@ fn 快照条目的主键是快照加路径() {
     insert("b.rs").expect("不同路径应当成功");
 }
 
+/// 快照的 seq 在工作区内唯一，跨工作区可以用同一个 seq。
 #[test]
-fn 快照的_seq_在工作区内唯一() {
+fn snapshot_seq_is_unique_within_workspace() {
     let mut store = store_with_workspace();
     let insert = |conn: &rusqlite::Connection, id: &str, ws: &str| {
         conn.execute(
@@ -98,8 +100,9 @@ fn 快照的_seq_在工作区内唯一() {
         .expect("跨工作区应当允许");
 }
 
+/// 读集主键包含工作区、路径与会话，同一三元组不能有两条记录。
 #[test]
-fn 读集主键包含工作区路径与会话() {
+fn read_set_primary_key_includes_workspace_path_and_session() {
     let store = store_with_workspace();
     let conn = store.conn_for_test();
     conn.execute(
@@ -119,8 +122,9 @@ fn 读集主键包含工作区路径与会话() {
     assert!(insert("h2").is_err(), "同一三元组不能有两条记录");
 }
 
+/// 快照引用不存在的工作区时被拒，快照不会指向幻影工作区。
 #[test]
-fn 快照引用不存在的工作区时被拒() {
+fn snapshot_rejected_when_referencing_missing_workspace() {
     let store = store_with_workspace();
     let conn = store.conn_for_test();
     let result = conn.execute(

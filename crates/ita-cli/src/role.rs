@@ -45,20 +45,23 @@ impl Role {
 mod tests {
     use super::Role;
 
+    /// 缺省角色是 master，不带参数启动就是 master。
     #[test]
-    fn 缺省角色是_master() {
+    fn default_role_is_master() {
         assert_eq!(Role::parse(None), Some(Role::Master));
     }
 
+    /// 三个已知角色都能解析，合法角色名不会被拒。
     #[test]
-    fn 三个已知角色都能解析() {
+    fn three_known_roles_all_parse() {
         assert_eq!(Role::parse(Some("master")), Some(Role::Master));
         assert_eq!(Role::parse(Some("worker")), Some(Role::Worker));
         assert_eq!(Role::parse(Some("tool-host")), Some(Role::ToolHost));
     }
 
+    /// 未知角色返回 none，拼写错误不会被悄悄映射到真实角色。
     #[test]
-    fn 未知角色返回_none() {
+    fn unknown_role_returns_none() {
         assert_eq!(Role::parse(Some("serve")), None);
     }
 }
