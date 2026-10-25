@@ -195,13 +195,15 @@ mod tests {
         Failure { attempt: attempt.to_owned(), outcome: outcome.to_owned() }
     }
 
+    /// 无改动无失败的空事实通过校验，什么都没做的批次也是合法的摘要。
     #[test]
-    fn 无改动的空事实通过校验() {
+    fn empty_facts_without_changes_pass_validation() {
         assert!(minimal().validate().is_ok());
     }
 
+    /// 有改动但无失败也允许，一次编译就过的批次不会被判为不合格。
     #[test]
-    fn 有改动但无失败也允许() {
+    fn changes_without_failures_are_allowed() {
         // 只改了一行注释、一次编译就过的批次确实可能没有失败；把它判为不合格会让压缩
         // 频繁失败。规则改为"失败小节永远输出"。
         let mut facts = minimal();
@@ -209,24 +211,27 @@ mod tests {
         assert!(facts.validate().is_ok());
     }
 
+    /// 失败小节永远输出，无失败时明确写"无"，模型不会猜失败被省略了。
     #[test]
-    fn 失败小节永远输出且无失败时写明() {
+    fn failure_section_always_output_with_explicit_none() {
         let mut facts = minimal();
         facts.changed_files = vec![change("a.rs")];
         let text = facts.render();
         assert!(text.contains("失败的尝试：无"), "没有失败时必须明确写出来");
     }
 
+    /// 只有失败没有改动也允许，失败但没改文件的批次也是合法的摘要。
     #[test]
-    fn 只有失败没有改动也允许() {
+    fn failures_without_changes_are_allowed() {
         let mut facts = minimal();
         facts.failures = vec![failure("cargo build", "E0308")];
         assert!(facts.validate().is_ok());
         assert!(facts.render().contains("未改动文件"));
     }
 
+    /// 失败记录缺尝试或结果两半之一即被拒，半空的失败永远不会被产出。
     #[test]
-    fn 失败记录缺一半被拒() {
+    fn failure_record_missing_either_half_is_rejected() {
         for (attempt, outcome) in [("cargo build", "  "), ("", "E0308")] {
             let mut facts = minimal();
             facts.failures = vec![failure(attempt, outcome)];
@@ -235,16 +240,18 @@ mod tests {
         }
     }
 
+    /// 已否决方案缺理由被拒，摘要不会只说"否决了 X"而不说为什么。
     #[test]
-    fn 已否决方案缺理由被拒() {
+    fn rejected_option_without_reason_is_rejected() {
         let mut facts = minimal();
         facts.rejected = vec![("用文本标签调用工具".to_owned(), "  ".to_owned())];
         let err = facts.validate().expect_err("应当被拒");
         assert!(matches!(err, FactsError::RejectedWithoutReason { .. }));
     }
 
+    /// 多条否决里只要有一条缺理由整份事实就被拒，单个缺口不会被悄悄忽略。
     #[test]
-    fn 多条否决里只有一条缺理由也拒() {
+    fn single_missing_reason_among_many_rejections_is_rejected() {
         let mut facts = minimal();
         facts.rejected = vec![
             ("方案 A".to_owned(), "缓存会失效".to_owned()),
@@ -254,8 +261,9 @@ mod tests {
         assert!(matches!(err, FactsError::RejectedWithoutReason { ref name } if name == "方案 B"));
     }
 
+    /// 轮数为零优先于其它规则，调用方先看到主错误而不是次要错误。
     #[test]
-    fn 轮数为零优先于其它规则() {
+    fn zero_turns_takes_priority_over_other_rules() {
         let mut facts = minimal();
         facts.turns = 0;
         facts.failures = vec![failure("", "")];
@@ -263,8 +271,9 @@ mod tests {
         assert_eq!(facts.validate(), Err(FactsError::EmptySpan));
     }
 
+    /// 渲染包含五类事实——改动、失败、否决、覆盖轮数、耗时——摘要完整。
     #[test]
-    fn 渲染包含五类事实() {
+    fn rendering_contains_all_five_fact_categories() {
         let facts = Facts {
             changed_files: vec![change("a.rs")],
             failures: vec![failure("cargo test", "2 个用例失败")],
@@ -282,16 +291,18 @@ mod tests {
         assert!(text.contains(BASE));
     }
 
+    /// 渲染用陈述句而不是祈使句，模型不会被诱导在散文里复述约束。
     #[test]
-    fn 渲染用陈述句而不是祈使句() {
+    fn rendering_uses_declarative_not_imperative() {
         // "不可修改"这类祈使句会诱导模型在散文里复述约束，浪费预算。
         let text = minimal().render();
         assert!(!text.contains("不可修改"));
         assert!(text.starts_with("事实记录："));
     }
 
+    /// 无改动时明确写"未改动文件"，模型不会猜该字段被省略了。
     #[test]
-    fn 无改动时明确写未改动() {
+    fn no_changes_rendered_as_explicit_no_changes() {
         assert!(minimal().render().contains("未改动文件"));
     }
 }

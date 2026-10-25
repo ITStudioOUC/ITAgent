@@ -189,8 +189,9 @@ mod tests {
         out
     }
 
+    /// 保留三轮时前一轮被覆盖，折叠永远留下最新的轮次。
     #[test]
-    fn 保留三轮时前一轮被覆盖() {
+    fn keeping_three_turns_covers_previous_turn() {
         let history = four_turns();
         let plan = plan(&history, 3).expect("应当可以折叠");
         // 第一轮三个节点被覆盖，其余九个保留。
@@ -200,8 +201,9 @@ mod tests {
         assert_eq!(plan.kept[0], id(4), "保留段从第二轮的用户消息开始");
     }
 
+    /// 覆盖与保留不重叠且合起来是全部节点，顺序不变，节点不丢不重。
     #[test]
-    fn 覆盖与保留不重叠且合起来是全部节点() {
+    fn covered_and_kept_disjoint_and_exhaustive() {
         let history = four_turns();
         let plan = plan(&history, 3).expect("应当可以折叠");
         let mut all: Vec<NodeId> = plan.covered.clone();
@@ -210,28 +212,32 @@ mod tests {
         assert_eq!(all, original, "两部分必须恰好覆盖全部历史且顺序不变");
     }
 
+    /// 轮数恰好等于保留数时报"无可压缩"而不是"历史太短"，两种情况被分开。
     #[test]
-    fn 轮数恰好等于保留数时报无可压缩() {
+    fn turns_equal_to_keep_reports_nothing_to_fold() {
         let history = four_turns();
         let err = plan(&history, 4).expect_err("应当被拒");
         // 与"轮数不足"分开：这里是"已经压无可压"，不是"历史太短"。
         assert_eq!(err, FoldError::NothingToFold { turns: 4, keep: 4 });
     }
 
+    /// 轮数少于保留数时拒绝，太短的历史不会被折叠。
     #[test]
-    fn 轮数少于保留数时拒绝() {
+    fn turns_less_than_keep_rejected() {
         let history = four_turns();
         let err = plan(&history, 9).expect_err("应当被拒");
         assert!(matches!(err, FoldError::NotEnoughTurns { .. }));
     }
 
+    /// 保留零轮被拒，保留什么都不做的折叠永远不会被计划。
     #[test]
-    fn 保留零轮被拒() {
+    fn keep_zero_rejected() {
         assert!(plan(&four_turns(), 0).is_err());
     }
 
+    /// 保留段总是以用户消息开头，保留的轮次不会从轮中间被切开。
     #[test]
-    fn 保留段总是以用户消息开头() {
+    fn kept_segment_always_starts_with_user_message() {
         let history = four_turns();
         for keep in 1..=3 {
             let plan = plan(&history, keep).expect("应当可以折叠");
@@ -243,8 +249,9 @@ mod tests {
         }
     }
 
+    /// 固定层与待办不参与折叠，系统提示与待办项永远不会被摘要掉。
     #[test]
-    fn 固定层与待办不参与折叠() {
+    fn fixed_layer_and_todo_not_participate_in_folding() {
         let mut history = four_turns();
         let fixed = Node {
             id: id(90),
@@ -270,8 +277,9 @@ mod tests {
         assert!(!plan.covered.contains(&todo.id));
     }
 
+    /// 工具节点不开启新轮，一轮里塞十个工具节点仍然只算一轮。
     #[test]
-    fn 工具节点不开启新轮() {
+    fn tool_nodes_do_not_open_new_turns() {
         // 一轮里塞十个工具节点，仍然只算一轮。
         let mut history = vec![user(1), assistant(2)];
         for n in 3..=9 {
@@ -285,13 +293,15 @@ mod tests {
         assert_eq!(plan.kept.len(), 2, "第二轮只有一个用户消息与一个助手回复");
     }
 
+    /// 空历史被拒，空折叠永远不会被计划。
     #[test]
-    fn 空历史被拒() {
+    fn empty_history_rejected() {
         assert!(plan(&[], 3).is_err());
     }
 
+    /// 保留两轮时覆盖前两轮，折叠永远留下最新的轮次。
     #[test]
-    fn 保留两轮时覆盖前两轮() {
+    fn keeping_two_turns_covers_first_two() {
         let history = four_turns();
         let plan = plan(&history, 2).expect("应当可以折叠");
         // 保留最近两轮：起点是第三轮的用户消息 id(7)。

@@ -78,20 +78,23 @@ mod tests {
         Budget::defaults()
     }
 
+    /// 未达触发点时不压缩，短历史永远不会被压缩。
     #[test]
-    fn 未达触发点时不压缩() {
+    fn no_compression_below_trigger_point() {
         let decision = decide(&budget(), 100_000);
         assert_eq!(decision, TriggerDecision::NotYet { used: 100_000, trigger_at: 170_000 });
     }
 
+    /// 刚好达到触发点时压缩，边界是包含的。
     #[test]
-    fn 刚好达到触发点时压缩() {
+    fn compression_at_exact_trigger_point() {
         let decision = decide(&budget(), 170_000);
         assert_eq!(decision, TriggerDecision::Compress { headroom: 30_000 });
     }
 
+    /// 剩余空间小于预留时明确拒绝而不是硬压，装不下的请求不会被发出。
     #[test]
-    fn 剩余空间不足时明确拒绝而不是硬压() {
+    fn insufficient_headroom_refused_not_forced() {
         // 用量 190000，剩余 10000，小于预留 20000。
         let decision = decide(&budget(), 190_000);
         assert_eq!(
@@ -100,28 +103,32 @@ mod tests {
         );
     }
 
+    /// 用量超过上限时剩余空间为零而不是下溢，超限用量不会被报成巨大剩余。
     #[test]
-    fn 用量超过上限时剩余为零而不是下溢() {
+    fn headroom_zero_not_underflow_over_limit() {
         let decision = decide(&budget(), 999_999);
         assert_eq!(decision, TriggerDecision::CannotCompress { headroom: 0, required: 20_000 });
     }
 
+    /// 高阈值是否可用取决于上限与预留的比例，同样的预留在一个上限下失败、在另一个上限下通过。
     #[test]
-    fn 高阈值是否可用取决于上限与预留的比例() {
+    fn high_threshold_availability_depends_on_limit_reserve_ratio() {
         // 上限 200000、阈值 95% 时剩余只有 10000，装不下 20000 的预留，构造期就拒绝。
         assert!(Budget::new(200_000, 950, 20_000, 3, 4096).is_err());
         // 同样的阈值与预留，上限翻倍后剩余 20000，恰好可以构造。
         assert!(Budget::new(400_000, 950, 20_000, 3, 4096).is_ok());
     }
 
+    /// 剩余空间随用量下降，用量越接近上限，决策越紧。
     #[test]
-    fn 剩余空间随用量下降() {
+    fn headroom_decreases_with_usage() {
         assert_eq!(decide(&budget(), 175_000), TriggerDecision::Compress { headroom: 25_000 });
         assert_eq!(decide(&budget(), 180_000), TriggerDecision::Compress { headroom: 20_000 });
     }
 
+    /// 即使预留为零，用量越过上限后也拒绝压缩：没有空间放压缩请求的任何开销。
     #[test]
-    fn 零预留时越过上限也拒绝压缩() {
+    fn compression_refused_when_over_limit_even_with_zero_reserve() {
         // 预留为零时构造期不会拦，但用量越过上限后剩余空间为零，压缩请求自身必然超窗。
         let b = Budget::new(100, 500, 0, 3, 4096).expect("零预留应当可以构造");
         assert_eq!(decide(&b, 120), TriggerDecision::CannotCompress { headroom: 0, required: 0 });

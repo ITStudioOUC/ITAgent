@@ -162,8 +162,9 @@ mod tests {
         }
     }
 
+    /// 多行预览只保留第一条非空行，瘦身结果是一行有代表性的文本。
     #[test]
-    fn 多行预览只保留第一条非空行() {
+    fn multiline_preview_keeps_first_nonempty_line() {
         let node = result_node(1, "\n第一行\n第二行", 0);
         let slim = slim(&node, Some("ita edit a.rs")).expect("应当成功");
         assert_eq!(slim.line, "第一行");
@@ -171,8 +172,9 @@ mod tests {
         assert_eq!(slim.command.as_deref(), Some("ita edit a.rs"));
     }
 
+    /// 超长单行被截断并带省略号，瘦身结果不会超出行限。
     #[test]
-    fn 超长单行被截断() {
+    fn overlong_single_line_is_truncated() {
         let long = "x".repeat(LINE_LIMIT + 100);
         let node = result_node(1, &long, 0);
         let slim = slim(&node, None).expect("应当成功");
@@ -180,8 +182,9 @@ mod tests {
         assert!(slim.line.ends_with('…'));
     }
 
+    /// 截断不会切开多字节字符，字符边界处切断不会产生坏串。
     #[test]
-    fn 截断不会切开多字节字符() {
+    fn truncation_does_not_split_multibyte_characters() {
         let long = "中".repeat(LINE_LIMIT);
         let node = result_node(1, &long, 0);
         let slim = slim(&node, None).expect("应当成功");
@@ -189,37 +192,42 @@ mod tests {
         assert!(slim.line.ends_with('…'));
     }
 
+    /// 非零退出码时错误文本仍然保留，失败不会被悄悄丢掉。
     #[test]
-    fn 非零退出码时错误文本仍然保留() {
+    fn error_text_preserved_on_nonzero_exit() {
         let node = result_node(1, "error[E0308]: mismatched types", 101);
         let slim = slim(&node, Some("cargo build")).expect("应当成功");
         assert_eq!(slim.exit_code, 101);
         assert!(slim.line.contains("E0308"));
     }
 
+    /// 空输出用占位而不是留空，模型能分清"无输出"与"缺输出"。
     #[test]
-    fn 空输出用占位而不是留空() {
+    fn empty_output_uses_placeholder_not_blank() {
         let node = result_node(1, "", 0);
         let slim = slim(&node, None).expect("应当成功");
         assert_eq!(slim.line, "（无输出）");
     }
 
+    /// 只有空白的输出也用占位，空白行不会被当成真实输出。
     #[test]
-    fn 只有空白的输出也用占位() {
+    fn whitespace_only_output_uses_placeholder_too() {
         let node = result_node(1, "   \n\n", 0);
         assert_eq!(slim(&node, None).expect("应当成功").line, "（无输出）");
     }
 
+    /// 原文句柄被保留以便寻回，瘦身结果不是完整输出的唯一副本。
     #[test]
-    fn 原文句柄被保留以便寻回() {
+    fn original_blob_handle_kept_for_retrieval() {
         let node = result_node(1, "ok", 0);
         let slim = slim(&node, None).expect("应当成功");
         let body = slim.body.expect("应当有句柄");
         assert_eq!(body.len, 4096);
     }
 
+    /// 渲染结果带命令、退出码与节点编号，模型能分清哪个节点产出了这份输出。
     #[test]
-    fn 渲染结果带命令与节点编号() {
+    fn rendering_includes_command_and_node_id() {
         let node = result_node(7, "ok", 2);
         let slim = slim(&node, Some("ita edit a.rs")).expect("应当成功");
         let text = render(&slim);
@@ -229,15 +237,17 @@ mod tests {
         assert!(text.contains(id(7).as_str()));
     }
 
+    /// 缺命令时明确标注未知，模型不会去猜命令。
     #[test]
-    fn 缺命令时明确标注未知() {
+    fn missing_command_marked_explicitly_unknown() {
         let node = result_node(7, "ok", 0);
         let slim = slim(&node, None).expect("应当成功");
         assert!(render(&slim).contains("未知命令"));
     }
 
+    /// 非工具结果被拒，对话轮次不会被瘦成工具结果。
     #[test]
-    fn 非工具结果被拒() {
+    fn non_tool_result_is_rejected() {
         let node = Node {
             id: id(1),
             parent: None,
@@ -250,8 +260,9 @@ mod tests {
         assert!(matches!(slim(&node, None), Err(SlimError::NotAToolResult(_))));
     }
 
+    /// 批量瘦身跳过非工具节点并保持工具结果的顺序，瘦身列表是忠实子集。
     #[test]
-    fn 批量瘦身跳过非工具节点并保持顺序() {
+    fn batch_slimming_skips_non_tool_nodes_keeps_order() {
         let nodes = vec![
             result_node(1, "a", 0),
             Node {
@@ -270,8 +281,9 @@ mod tests {
         assert_eq!(slimmed[1].command.as_deref(), Some("cargo test"));
     }
 
+    /// 无正文的结果也能瘦身，缺正文的工具结果不是错误。
     #[test]
-    fn 无正文的结果也能瘦身() {
+    fn result_without_body_can_still_be_slimmed() {
         let node = Node {
             id: id(1),
             parent: None,

@@ -196,21 +196,24 @@ mod tests {
         format!("{PROSE_OPEN}\n{prose}\n{PROSE_CLOSE}\n{END}")
     }
 
+    /// 带散文标记与结束标记的合法输出被解析，标记不会破坏正常路径。
     #[test]
-    fn 合法输出被解析() {
+    fn valid_output_is_parsed() {
         let out = parse_output(&good("改了 A，否决了 B"), LIMIT).expect("应当成功");
         assert_eq!(out.prose, "改了 A，否决了 B");
         assert_eq!(out.prompt_version, PROMPT_VERSION);
     }
 
+    /// 结束标记之后的尾部空白被容忍，模型多出的空行不会被惩罚。
     #[test]
-    fn 尾部空白被容忍() {
+    fn trailing_whitespace_is_tolerated() {
         let raw = format!("{}\n\n  ", good("x"));
         assert!(parse_output(&raw, LIMIT).is_ok());
     }
 
+    /// 缺少结束标记判为截断，截断不可原样重试且需要缩小输入。
     #[test]
-    fn 缺少结束标记判截断() {
+    fn missing_end_marker_is_truncation() {
         let raw = format!("{PROSE_OPEN}\nx\n{PROSE_CLOSE}");
         let err = parse_output(&raw, LIMIT).expect_err("应当被拒");
         assert_eq!(err, CompressError::Truncated);
@@ -219,20 +222,23 @@ mod tests {
         assert!(err.needs_smaller_input());
     }
 
+    /// 缺少散文标记的输出被拒，裸摘要永远不会被接受。
     #[test]
-    fn 缺少散文标记被拒() {
+    fn missing_prose_markers_rejected() {
         let raw = format!("只有一段话\n{END}");
         assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::MissingProse));
     }
 
+    /// 只有开场标记没有闭合标记的输出被拒，半开的段落不会被接受。
     #[test]
-    fn 散文标记不成对被拒() {
+    fn unpaired_prose_markers_rejected() {
         let raw = format!("{PROSE_OPEN}\nx\n{END}");
         assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::MissingProse));
     }
 
+    /// 标记之外的说明——开场白、收尾说明、结束标记后的内容——都被拒，输出必须恰好是契约的形状。
     #[test]
-    fn 标记之外的说明被拒() {
+    fn text_outside_markers_rejected() {
         // 开场白写在散文段之前。
         let raw = format!("好的，这是摘要：\n{PROSE_OPEN}\nx\n{PROSE_CLOSE}\n{END}");
         let err = parse_output(&raw, LIMIT).expect_err("应当被拒");
@@ -247,13 +253,15 @@ mod tests {
         assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::Truncated));
     }
 
+    /// 空散文被拒，什么都没说摘要永远不会被产出。
     #[test]
-    fn 空散文被拒() {
+    fn empty_prose_rejected() {
         assert_eq!(parse_output(&good("   "), LIMIT), Err(CompressError::EmptyProse));
     }
 
+    /// 超长散文被拒，错误里带上实际长度与上限两个数，调用方看得见超了多少。
     #[test]
-    fn 散文超长被拒并给出两个数() {
+    fn prose_over_limit_rejected_with_both_numbers() {
         let long = "x".repeat(LIMIT + 1);
         let err = parse_output(&good(&long), LIMIT).expect_err("应当被拒");
         match err {
@@ -265,14 +273,16 @@ mod tests {
         }
     }
 
+    /// 散文里出现标记字符串按普通文本处理，提到标记的摘要不会被误解析。
     #[test]
-    fn 散文里出现标记字符串按普通文本处理() {
+    fn marker_string_in_prose_treated_as_plain_text() {
         let out = parse_output(&good("提到了 <prose> 这个字符串"), LIMIT).expect("应当成功");
         assert!(out.prose.contains("<prose>"));
     }
 
+    /// 重试分类区分随机性错误（原样重试）与输入过大（先缩小输入），重试不浪费调用。
     #[test]
-    fn 重试分类区分随机性错误与输入过大() {
+    fn retry_classification_distinguishes_random_from_oversized_input() {
         for err in [
             CompressError::MissingProse,
             CompressError::EmptyProse,
@@ -288,8 +298,9 @@ mod tests {
         }
     }
 
+    /// 标记大小写不符与截断是两种不同的错误，调用方能分清大小写笔误与长度切断。
     #[test]
-    fn 标记大小写不符与截断分开() {
+    fn marker_case_mismatch_distinct_from_truncation() {
         let raw = format!("{PROSE_OPEN}\nx\n{PROSE_CLOSE}\n<END>");
         assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::MarkerCaseMismatch));
 
@@ -297,21 +308,24 @@ mod tests {
         assert_eq!(parse_output(&raw, LIMIT), Err(CompressError::Truncated));
     }
 
+    /// 散文里含闭合标记字符串时按第一个闭合处理，切分后的残留文本被拒而不是检测嵌套。
     #[test]
-    fn 散文里含闭合标记字符串时按第一个闭合处理() {
+    fn prose_containing_close_marker_splits_at_first_close() {
         // 契约不允许嵌套；出现这种情况时后面的内容会被判成标记之外的说明。
         let raw = format!("{PROSE_OPEN}\na </prose> b\n{PROSE_CLOSE}\n{END}");
         let err = parse_output(&raw, LIMIT).expect_err("应当被拒");
         assert!(matches!(err, CompressError::StrayText { .. }), "实际为 {err:?}");
     }
 
+    /// 只有结束标记没有散文的输出被拒，没有内容的标记不会被接受。
     #[test]
-    fn 只有结束标记时被拒() {
+    fn end_marker_alone_rejected() {
         assert_eq!(parse_output(END, LIMIT), Err(CompressError::MissingProse));
     }
 
+    /// 格式说明与解析器对标记一致，按说明生成的输出永远能被解析。
     #[test]
-    fn 格式说明与解析器一致() {
+    fn format_instructions_match_parser() {
         // 按说明生成的输出必须能被解析：两者是同一份契约的两面。
         let instructions = format_instructions();
         assert!(instructions.contains(PROSE_OPEN));

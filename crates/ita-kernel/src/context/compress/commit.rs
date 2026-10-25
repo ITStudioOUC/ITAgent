@@ -183,8 +183,9 @@ mod tests {
         }
     }
 
+    /// 计划包含散文与事实两段，帧永远带着摘要与可核对的事实记录。
     #[test]
-    fn 计划包含散文与事实两段() {
+    fn plan_contains_prose_and_facts_sections() {
         let plan =
             plan(&Token(id(1), 3), &fold(vec![id(1)]), &output("改了 A"), &facts(), "fp", None)
                 .expect("应当成功");
@@ -197,15 +198,17 @@ mod tests {
         assert_eq!(plan.prompt_version, 1);
     }
 
+    /// 空折叠范围被拒，空范围永远不会产出计划。
     #[test]
-    fn 空折叠范围被拒() {
+    fn empty_fold_range_is_rejected() {
         let err = plan(&Token(id(1), 3), &fold(vec![]), &output("x"), &facts(), "fp", None)
             .expect_err("应当被拒");
         assert_eq!(err, CommitError::EmptyFold);
     }
 
+    /// 失败记录缺一半时事实层不完整，不出计划，坏摘要不会变成帧。
     #[test]
-    fn 事实层不完整时不出计划() {
+    fn incomplete_failure_record_refuses_plan() {
         let mut bad = facts();
         bad.failures = vec![Failure { attempt: " ".to_owned(), outcome: "x".to_owned() }];
         let err = plan(&Token(id(1), 3), &fold(vec![id(1)]), &output("x"), &bad, "fp", None)
@@ -213,8 +216,9 @@ mod tests {
         assert!(matches!(err, CommitError::BadFacts(_)));
     }
 
+    /// 计划记录固定层指纹与检查点，帧能事后对照它建成的快照。
     #[test]
-    fn 计划记录固定层指纹与检查点() {
+    fn plan_records_fixed_layer_fingerprint_and_checkpoint() {
         let cp = crate::context::ids::CheckpointId::parse(BASE).expect("合法");
         let plan = plan(
             &Token(id(1), 3),
@@ -229,8 +233,9 @@ mod tests {
         assert_eq!(plan.checkpoint, Some(cp));
     }
 
+    /// 事实段在散文之后，模型先读叙述再读可核对的事实。
     #[test]
-    fn 事实段在散文之后() {
+    fn facts_section_comes_after_prose() {
         let plan =
             plan(&Token(id(1), 3), &fold(vec![id(1)]), &output("叙述"), &facts(), "fp", None)
                 .expect("应当成功");
@@ -239,16 +244,18 @@ mod tests {
         assert!(prose_at < facts_at, "散文必须在事实之前");
     }
 
+    /// 折叠范围末尾与 head 不一致时拒绝出计划，帧不会接错父节点。
     #[test]
-    fn 折叠范围末尾与_head_不一致时拒绝出计划() {
+    fn fold_range_end_mismatched_with_head_refuses_plan() {
         // 覆盖段止于 id(1)，而 head 是 id(2)：两者不连续，写出来的帧会接错父节点。
         let err = plan(&Token(id(2), 1), &fold(vec![id(1)]), &output("x"), &facts(), "fp", None)
             .expect_err("应当被拒");
         assert!(matches!(err, CommitError::FoldEndsBeforeHead { .. }));
     }
 
+    /// 否决方案缺理由时事实层不完整，同样拒绝出计划，head 一定不变。
     #[test]
-    fn 事实层不完整时也拒绝出计划() {
+    fn rejected_option_without_reason_also_refuses_plan() {
         // 意图是"计划不生成，因此 head 一定不变"：这里用错误类型表达该不变量。
         let mut bad = facts();
         bad.rejected = vec![("方案".to_owned(), " ".to_owned())];
@@ -257,8 +264,9 @@ mod tests {
         assert!(matches!(err, CommitError::BadFacts(_)));
     }
 
+    /// 同样的输入产出同样的计划，计划是纯值，可比较可重试。
     #[test]
-    fn 计划可复用于多次比较() {
+    fn plan_is_reusable_for_repeated_comparison() {
         // 计划本身不持有可变状态：同一个计划可以用同一个令牌尝试提交，失败就整体作废。
         let token = Token(id(1), 3);
         let a =
