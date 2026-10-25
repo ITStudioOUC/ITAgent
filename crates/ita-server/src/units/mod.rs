@@ -1,8 +1,8 @@
-//! unit 拓扑类型：server 子系统生命周期监督。
+//! unit 监督：server 子系统生命周期监督。
 //!
 //! unit 是 server 内固定命名的子系统（store、router、ipc、lease、tools、model、telemetry），
-//! 拓扑在启动时静态声明，不动态建行。本模块只定义类型与无环校验，不含状态机、就绪探针与
-//! 启动门。
+//! 拓扑在启动时静态声明，不动态建行。本模块含拓扑类型与无环校验（`topology`）、状态机
+//! （`state`）、就绪探针（`probe`）与监督者（`supervisor`），不含启动门与能力集快照。
 //!
 //! unit 与工作流节点是两套监督语义，靠类型与文档分开：本模块的类型独立于 `ita-workflow`
 //! 的节点类型，不复用、不混用。
@@ -11,8 +11,14 @@
 //! 无环校验拒绝。因此 `↔` 落成单方向边：`lease` 依赖 `tools`（租约仲裁需要工具目录注册完成
 //! 才能仲裁跨工作区资源，工具目录注册不依赖租约仲裁），`tools` 先启动。测试按这个方向实例化。
 
+pub mod probe;
+pub mod state;
+pub mod supervisor;
 pub mod topology;
 
+pub use probe::{ProbeResult, ReadinessProbe};
+pub use state::{UnitEvent, UnitState, next};
+pub use supervisor::{ShutdownResult, StepOutcome, Supervisor};
 pub use topology::{CycleError, Topology};
 
 use std::fmt;

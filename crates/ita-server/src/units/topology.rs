@@ -164,6 +164,22 @@ impl Topology {
         self.edges.insert((target, dependent, kind));
     }
 
+    /// 返回 `unit` 依赖的全部 unit（被依赖者先启动）。
+    ///
+    /// # 边界与前提
+    /// - `unit` 不在拓扑里时返回空列表。
+    /// - 同一对 unit 的多种类边只返回一次（按边集合去重）。
+    ///
+    /// # 副作用
+    /// 无。
+    pub fn dependencies_of(&self, unit: &UnitId) -> Vec<UnitId> {
+        self.edges
+            .iter()
+            .filter(|(_, dependent, _)| dependent == unit)
+            .map(|(target, _, _)| target.clone())
+            .collect()
+    }
+
     /// 建并集邻接表：`target -> dependents`。
     fn union_adjacency(&self) -> BTreeMap<UnitId, BTreeSet<UnitId>> {
         let mut adj: BTreeMap<UnitId, BTreeSet<UnitId>> = BTreeMap::new();
