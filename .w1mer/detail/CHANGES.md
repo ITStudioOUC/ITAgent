@@ -381,3 +381,16 @@ state: active
   写入路径在事务内用 `SELECT EXISTS` 断言属于同一工作区，不靠表结构外键（既有列补外键做不到）。
   事件表"不可变"与 `events.id` 唯一索引仍是表结构未承接的缺口，触发器与唯一索引后补得起，
   外键是硬窗口，三条都留给后续批次。
+- 批次 06.4 新增 `crates/ita-store/src/{heads,commit}.rs` 与集成测试 `tests/commit.rs`，
+  存储层首次对外暴露帧提交与帧正文编解码，版本推进到 0.1.36。契约层面新增一组形状：
+  `Store::commit_frame` 在单个立即事务内做三件事——校验会话与祖先节点同属一个工作区、
+  插入帧节点、比较并交换 head、追加压缩事件，顺序是刻意的，事件追加排在比较并交换成功之后，
+  冲突才不烧 seq；`heads.rs` 的比较并交换是通用的，吃 `(会话, 期望节点, 期望代次, 新节点)`，
+  一条 `UPDATE` 同时匹配 `(head_node, head_generation)`，影响行数为零即冲突，帧提交是它的
+  一个消费者，回退是另一个，本批只接线帧提交。帧正文落库方式是长度前缀文本，写进
+  `nodes.inline_body`，不引入 `serde_json`、不新增迁移，`prompt_version` 不进帧节点（内核
+  `Frame` 结构没有这个字段，它属于压缩调用事件，落库推迟到 06.5 之后能写内容寻址引用时）。
+  跨工作区校验在事务内用 `SELECT EXISTS` 断言会话、父节点、覆盖列表三个位置，检查点是弱引用
+  不校验。`StoreError` 新增 `HeadConflict` 与 `CrossWorkspace` 两个变体，`lib.rs` 声明
+  `commit` 与 `heads` 两个模块并导出公开类型。`nodes.body_kind` 的取值域 `'frame'` 是 06.4
+  引入的第一个节点正文种类值，`nodes.body_kind` 没有取值域 CHECK，完整词表留给后续批次统一补。
