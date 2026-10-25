@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-25T12:57:27Z",
+  "updated": "2026-10-25T13:12:25Z",
   "current": "06.8",
   "tasks": {
     "01": {
@@ -889,7 +889,7 @@
     "06.8": {
       "type": "main",
       "base": "2c48515e8881b6122ff6c75e0fc9ff29844b2451",
-      "end": null,
+      "end": "fc6d74061180013dd5add343b601a749882d4029",
       "roles": {
         "reviewer": {
           "joined": true,
@@ -905,7 +905,7 @@
         }
       },
       "started": "2026-10-25T12:36:24Z",
-      "ended": null
+      "ended": "2026-10-25T13:12:25Z"
     }
   }
 }
