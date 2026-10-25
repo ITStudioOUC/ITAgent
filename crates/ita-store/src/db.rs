@@ -9,9 +9,12 @@
 
 use std::path::Path;
 
+use ita_kernel::context::{NodeId, SessionId};
 use rusqlite::Connection;
 
+use crate::events::{self, AppendedEvent, Event, NewEvent};
 use crate::migrate::{self, MigrateError};
+use crate::preview::PreviewLimit;
 use crate::scope::WorkspaceScope;
 
 /// 存储层错误。
@@ -31,6 +34,10 @@ pub enum StoreError {
     ClockOverflow,
     /// 工作区已存在。
     WorkspaceExists(String),
+    /// 事件引用的会话不属于本工作区。
+    UnknownSession(SessionId),
+    /// 事件引用的节点不属于本工作区。
+    UnknownNode(NodeId),
 }
 
 impl std::fmt::Display for StoreError {
@@ -46,6 +53,8 @@ impl std::fmt::Display for StoreError {
                 "该文件系统不支持 WAL（实际模式 {mode}）；读将被写阻塞，批量提交的吞吐假设不成立"
             ),
             Self::WorkspaceExists(id) => write!(f, "工作区 {id} 已存在"),
+            Self::UnknownSession(id) => write!(f, "事件引用的会话 {id} 不属于本工作区"),
+            Self::UnknownNode(id) => write!(f, "事件引用的节点 {id} 不属于本工作区"),
         }
     }
 }
@@ -198,6 +207,46 @@ impl Store {
         Ok(migrate::current_version(&self.conn)?)
     }
 
+    /// 追加一条事件。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内追加事件（校验归属、分配 seq、插入）。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// 追加是权威写，提交后才返回。返回的 seq 与事件 id 代表已持久化的那一行。
+    ///
+    /// # 副作用
+    /// 写 `events` 与 `workspace_seq`。
+    pub fn append_event(
+        &mut self,
+        scope: &WorkspaceScope,
+        event: &NewEvent,
+        limit: &PreviewLimit,
+    ) -> Result<AppendedEvent, StoreError> {
+        let tx = self.conn_mut().transaction()?;
+        let appended = events::append_in(&tx, scope, event, *limit)?;
+        tx.commit()?;
+        Ok(appended)
+    }
+
+    /// 读取某工作区在给定 seq 之后的至多 N 条事件，按 seq 升序。
+    ///
+    /// # 边界与前提
+    /// 只按 seq 排序，不用 `created_at`：事件顺序由 seq 决定。
+    ///
+    /// # 副作用
+    /// 只读。
+    pub fn events_after(
+        &self,
+        scope: &WorkspaceScope,
+        after_seq: i64,
+        limit: usize,
+    ) -> Result<Vec<Event>, StoreError> {
+        events::read_after(self.conn(), scope, after_seq, limit)
+    }
+
     /// 供 crate 内部模块使用的连接。
     ///
     /// # 边界与前提
@@ -205,11 +254,20 @@ impl Store {
     ///
     /// # 副作用
     /// 取决于调用方。
-    // 目前只有本文件的测试用到它；后续事件与快照模块会正式使用。
-    // 用 allow 而不是 expect：测试目标里它确实被用到，expect 会在那里不成立。
-    #[allow(dead_code)]
     pub(crate) fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    /// 供 crate 内部模块获取可变连接，用于开写事务。
+    ///
+    /// # 边界与前提
+    /// `pub(crate)`：业务代码拿不到连接。写方法取 `&mut self`，与 `create_workspace` 的形状
+    /// 一致，不在同一句柄上留下两种事务获取方式。
+    ///
+    /// # 副作用
+    /// 取决于调用方。
+    pub(crate) fn conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
     }
 
     /// 供集成测试检查表结构的连接。
