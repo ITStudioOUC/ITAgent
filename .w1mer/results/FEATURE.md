@@ -107,3 +107,69 @@ seq 从 `workspace_seq` 计数器读改写分配，不用 `MAX(seq) + 1`。第 3
 全仓剩余 169 条属于上下文核心、语义压缩、存储与命令行四组，留给本批次的后续提交。
 另核对 80 个改名后的 `#[test]` 上方都紧贴一行 `///`，且函数名都是 `[a-z0-9_]` 组成的
 合法 snake_case 标识符，无一遗漏。
+
+## 07.1 拓扑类型与依赖无环校验
+
+结论：unit 拓扑类型与依赖无环校验落地，三种依赖（`Requires`/`Wants`/`After`）方向语义
+一致，无环校验对三种边的并集判定，任何环都致命并返回闭合环路径，稳定启动顺序是词典序
+最小的拓扑序。类型落在 `ita-server` 而非内核，unit 类型与工作流节点类型靠类型分开。
+`lease ↔ tools` 的双向记号落成单方向边（`lease` 依赖 `tools`），在模块文档注释里写明这条
+裁决。07.1 零新增依赖、不建表、不碰 tokio。计划第四节的十条验收全部写成测试并通过，
+验证命令退出码全为 0。
+
+### 提交
+
+| 提交 | 主题 | 改动 |
+|---|---|---|
+| `eba64fc` | unit 拓扑类型与三种依赖的无环校验和稳定启动顺序 | `units/mod.rs` 新建 `UnitId` 标签名义类型（解析校验、`Ord`/`Hash` 派生）与 `DepKind` 三变体，模块文档注释写明 `lease ↔ tools` 落单方向的裁决；`units/topology.rs` 新建 `Topology`（unit 集合加边集合）、`add_requires`/`add_wants`/`add_after`、`find_cycle`（DFS 三色标记）、`startup_order`（Kahn 加最小堆）、`CycleError`（带环路径），内联测试覆盖十条验收；`lib.rs` 声明 `units` 模块 |
+
+### 类型与算法
+
+`UnitId` 是校验过的标签名义类型：小写字母数字加连字符，非空，首尾不连字符，不连续连字符，
+与 systemd unit 命名同型。`Ord` 是标签词典序，供最小堆排序；`Hash` 供边的集合去重。内核的
+`id_type!` 宏是 crate 私有的，`ita-server` 不能复用，`UnitId` 在 `units/mod.rs` 自定义。
+
+`DepKind` 是三个变体：`Requires`（硬依赖，失败则连带失败）、`Wants`（软依赖，失败只是降级）、
+`After`（仅排序，不隐含依赖）。三种边在图结构里方向完全相同：`X` 依赖 `Y`（无论哪种种类）
+都产生 `Y → X` 的边，即被依赖者 `Y` 先启动。种类只记录在边上，供失败传播与启动门消费，
+无环校验与启动排序不消费种类。
+
+`Topology` 是 unit 集合加有向边集合，边是三元组 `(target, dependent, kind)`，含义是
+`dependent` 依赖 `target`，`target` 先启动。`find_cycle` 用 DFS 三色标记在三种边的并集图上
+找环，撞灰节点即从栈顶回溯到灰节点、再补回起点，形成闭合环（首元素等于尾元素）。环路径按
+依赖方向表达，归一为从环中最小标签起，使同一个环无论由哪个灰节点触发检测都给出同样的表示。
+`startup_order` 先调 `find_cycle`，有环则返回 `CycleError`（带环路径），无环则做 Kahn 拓扑排序
+加按 unit 标签排序的最小堆，输出是所有合法拓扑序里词典序最小的那一个。
+
+### 边界与裁决
+
+- `lease ↔ tools` 的双向记号落成单方向边：`lease` 依赖 `tools`，`tools` 先启动。按字面建成
+  互相 `Requires` 会自己成环，被自己的无环校验拒绝。
+- 无环校验对三种边的并集判定，任何环都致命。`Wants` 环与 `After` 环同样被检出，不是只对
+  `Requires`。
+- 自依赖是环，环路径为 `[A, A]`。
+- 重复边幂等：同一对 unit 同种类的边加两次不重复计数。
+- 同一对 unit 多种类边合法：不冲突。
+- 空拓扑与孤立 unit 合法。
+
+### 验证
+
+| 命令 | 退出码 | 结果 |
+|---|---|---|
+| `cargo build --workspace --locked` | 0 | 全工作区构建通过 |
+| `cargo nextest run --workspace --locked` | 0 | 413 项通过，0 项跳过（新增 18 项） |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | 零告警 |
+| `cargo fmt --all --check` | 0 | 无需格式化 |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | 0 | 文档构建通过 |
+| `cargo test --doc --workspace --locked` | 0 | doctest 通过 |
+| `bash .w1mer/scripts/check_layers.sh` | 0 | 分层门通过 |
+| `bash .w1mer/scripts/check_kernel_purity.sh` | 0 | 内核纯净门通过 |
+| `cargo +1.85.0 check --workspace --all-targets --locked` | 0 | MSRV 通过 |
+
+`shellcheck` 在本环境缺失，而本批未改动任何 shell 脚本，故 lint 阶段的 shellcheck 子步骤
+未执行；其余 lint 子步骤（分层门、纯净门、clippy、rustdoc）全部通过。
+
+### 新增测试分布
+
+新增 18 项测试，全部内联在 `ita-server` 的 `units` 模块：`mod.rs` 的 `UnitId` 解析校验与
+`Ord`/`Hash` 派生 8 项，`topology.rs` 的十条验收 10 项。全仓测试总数从 395 项增至 413 项。
