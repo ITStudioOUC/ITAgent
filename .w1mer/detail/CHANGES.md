@@ -369,3 +369,15 @@ state: active
   `///` 与行内注释重复了机制说明（`node.rs` 弱引用、`fold.rs` 工具节点与轮数相等两条、`migrate.rs`
   破坏性语句与可重复执行两条），违反分工但不影响行为，记录在复审文档，不构成返工。版本 0.1.33
   推进到 0.1.34，测试函数名英文化至此全部完成，后续批次不再遗留中文标识符。
+- 批次 06.3 新增 `crates/ita-store/src/{events,seq,preview}.rs` 与集成测试 `tests/events.rs`，
+  存储层首次对外暴露事件追加与按 seq 读取，并新增 `Store::append_event`、`Store::events_after`
+  与 crate 内部的 `conn_mut`，版本推进到 0.1.35。契约层面新增一组形状：`NewEvent` 以
+  `with_session`、`with_node`、`with_payload` 组装，正文只存哈希、长度与头尾两段预览、不内联
+  大段正文；`AppendedEvent` 带 seq 与事件 id，代表已持久化的那一行；`PreviewLimit` 的默认值
+  头 4 KiB 加尾 1 KiB 只出现在 `defaults()` 一处，由调用方传入。内核 `ids.rs` 用既有 `id_type!`
+  宏加 `EventId` 并重新导出，标识符名义类型从四个变五个，存储层用 `ulid` crate 生成而不另写
+  校验。seq 从 `workspace_seq` 计数器在写事务内读改写、不走 `MAX(seq)+1`，也不走 `RETURNING`
+  （`CONVENTIONS` 禁用）；分配与插入同一事务，失败回滚不消耗计数器。事件引用的会话与节点由
+  写入路径在事务内用 `SELECT EXISTS` 断言属于同一工作区，不靠表结构外键（既有列补外键做不到）。
+  事件表"不可变"与 `events.id` 唯一索引仍是表结构未承接的缺口，触发器与唯一索引后补得起，
+  外键是硬窗口，三条都留给后续批次。
