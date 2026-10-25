@@ -147,7 +147,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 06.6 | 快照清单：文件、墓碑与超阈值 | .w1mer/detail/05_plan-06.md | done | 0 | 快照清单创建与读取落地：条目三种类枚举让非法形状不可表示，seq 用 COALESCE(MAX(seq),0)+1 在立即事务内分配，父边由存储自动链接（首个快照 baseline 父 NULL，其余 incremental 父指向最高 seq 快照），快照 id 复用内核 CheckpointId，content_stored 为 1 的条目其 hash 必在 blobs 里由事务内 SELECT EXISTS 断言而不加外键，读路径覆盖快照元信息与清单且跨工作区靠 join 校验；十四条验收全过，339 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 06.7 | 基线加增量 squash 与重定基线 | .w1mer/detail/05_plan-06.md | done | 0 | 基线加增量 squash 与重定基线落地：squash 是独立动词，增量达保留窗口（作参数接收、存储层不硬编码）时最老两条并入基线，一个立即事务里读清单、折叠、先重挂后删父、替换基线条目；重定基线自主模式被拒、留痕三列成组写入、基线行只更新不删除；十三条验收全过，355 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 06.8 | 回滚对齐：写回、删除与残留清单 | .w1mer/detail/05_plan-06.md | done | 0 | 回滚对齐落地：独立动词 Store::align 沿链从基线折叠到目标读有效状态，折叠提取为共享模块与 squash 共用同一套左结合覆盖加墓碑删除，范围是参数存储层不解析工具清单，四种情况全处理（写回、覆盖、墓碑删除、范围内新建删除），超阈值条目只报告从不删除不覆盖，写回前核对 blobs 行缺失不写回残留清单标注内容缺失，外部改动检测是磁盘与目标哈希不一致默认拒绝 force 覆盖；十条验收全过，372 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
-| 06.9 | 标记清除 GC：快照根、租约根与宽限期 | .w1mer/detail/05_plan-06.md | todo | 0 |
+| 06.9 | 标记清除 GC：快照根、租约根与宽限期 | .w1mer/detail/05_plan-06.md | done | 0 | 标记清除 GC 落地：回收是全局标记-清除加宽限期不是引用计数，标记根是 snapshot_entries.hash、nodes.body_hash、events.payload_hash 三张表加 extra_roots 参数（租约根），宽限期是两观协议（第一次观察只写 unreferenced_since 不删、第二次观察且超宽限期才删），删除顺序行先行文件随后（行删在事务内、文件删在提交后），孤儿文件清扫（无 blob 行的文件含 .tmp）是回收的一部分；十条验收全过，395 项测试全绿，版本推进与文档定稿留待评审与探索者收尾后统一处理 |
 | 07.1 | 拓扑类型与依赖无环校验 | .w1mer/detail/06_plan-07.md | todo | 0 |
 | 07.2 | 状态机、就绪探针与停止顺序 | .w1mer/detail/06_plan-07.md | todo | 0 |
 | 07.3 | 必需与非必需启动门与降级 | .w1mer/detail/06_plan-07.md | todo | 0 |

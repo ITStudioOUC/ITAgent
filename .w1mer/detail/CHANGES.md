@@ -428,3 +428,19 @@ state: active
   `MissingBlob`、`UnknownSnapshot`、`InvalidEntryShape` 三个变体，`lib.rs` 声明 `snapshots`
   与 `entries` 两个私有模块并导出 `SnapshotEntry`、`CreatedSnapshot`、`SnapshotInfo`。
   读路径成为 06.7 squash 与 06.8 回滚对齐的公共依赖，与 06.5 把 `get` 收进本批同型。
+- 批次 06.8 新增 `crates/ita-store/src/{align,fold,residual,restore}.rs` 与集成测试 `tests/align.rs`，
+  存储层首次对外暴露回滚对齐，版本推进到 0.1.40。契约层面新增一组形状：`Store::align(scope, target,
+  range, force)` 是独立动词，不折进 `create_snapshot`，在单个立即事务内沿链从基线折叠到目标（含
+  目标）读有效状态、对齐磁盘、输出残留清单；范围是参数，存储层不解析工具清单，范围外路径不碰只进
+  残留清单。折叠算法从 `squash::fold` 提取为共享模块 `fold::fold`，与 06.7 squash 共用同一套左结合
+  覆盖加墓碑删除，`squash.rs` 与 `retention.rs` 都改为调用 `fold::fold`，提取忠实无行为变化。四种
+  情况全处理：写回（磁盘无则从 CAS 写回）、覆盖（磁盘有且哈希与目标不一致则默认拒绝、force 覆盖）、
+  范围内新建删除（磁盘存在但不在有效状态的路径删除）、超阈值条目（`content_stored = 0`）只报告从不
+  删除不覆盖。写回前核对 `blobs` 行，缺失标注"内容缺失"不写回。`StoreError` 新增
+  `AlignRefusedExternal(String)` 与 `AlignRootMissing(String)` 两个变体，`lib.rs` 声明 `align`、`fold`、
+  `restore` 三个私有模块并导出 `AlignResult`、`ResidualEntry`、`ResidualReason`。`ResidualReason` 四
+  原因各有名字，`BackgroundLeftover` 在枚举里有名字但 `align_in` 尚未填充，是已知缺口非缺陷。非阻塞
+  观察：`AlignRootMissing` 全树无构造点，`align_in` 读根路径后不检查磁盘存在性，该变体不可达；
+  `restore.rs` 模块头写"删除是递归删除，目录与文件都处理"但 `delete` 用 `remove_file` 对目录报错，
+  文档与行为不符；`align.rs` 模块头出现 ROADMAP 编号（06.6/06.7/06.8）与 ADR 编号（0017/0018），
+  违反注释规范"禁止内部编号"，既有模式在 `squash.rs` 与 `db.rs`/`retention.rs` 是 06.7 引入的写法。
