@@ -25,15 +25,7 @@ run_fmt() {
 }
 
 run_lint() {
-  section "分层与能力归属门"
-  bash .w1mer/scripts/check_layers.sh
-
-  section "分层门自测"
-  bash .w1mer/scripts/check_layers_test.sh
-
-  section "内核纯净门"
-  bash .w1mer/scripts/check_kernel_purity.sh
-
+  # 先确认工具在，避免缺 shellcheck 却先跑完两道门与编译才失败。
   section "shell 脚本静态检查"
   local shellcheck_bin=${SHELLCHECK:-shellcheck}
   if ! command -v "$shellcheck_bin" >/dev/null 2>&1; then
@@ -43,6 +35,15 @@ run_lint() {
   fi
   "$shellcheck_bin" --version
   "$shellcheck_bin" .w1mer/scripts/*.sh
+
+  section "分层与能力归属门"
+  bash .w1mer/scripts/check_layers.sh
+
+  section "分层门自测"
+  bash .w1mer/scripts/check_layers_test.sh
+
+  section "内核纯净门"
+  bash .w1mer/scripts/check_kernel_purity.sh
 
   section "clippy"
   cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -77,9 +78,17 @@ run_msrv() {
       ;;
   esac
   cargo +1.85.0 check --workspace --all-targets --locked
+
+  # check 不编译 doctest；单列一步，避免以后有示例时 MSRV 覆盖静默缩小。
+  section "MSRV doctest"
+  cargo +1.85.0 test --doc --workspace --locked
 }
 
 case "$stage" in
+  -h | --help)
+    printf '用法：%s [fmt|lint|test|msrv|all]\n' "$0"
+    printf '  all 等于 fmt + lint + test，不含 msrv。\n'
+    ;;
   fmt) run_fmt ;;
   lint) run_lint ;;
   test) run_test ;;

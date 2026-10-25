@@ -72,7 +72,15 @@ except (OSError, json.JSONDecodeError) as error:
     print(f"分层门失败：metadata 不是合法 JSON（{error}）", file=sys.stderr)
     sys.exit(1)
 
-packages = meta["packages"]
+packages = meta.get("packages")
+if not isinstance(packages, list):
+    print("分层门失败：metadata 缺少 packages 数组。", file=sys.stderr)
+    sys.exit(1)
+for package in packages:
+    if not isinstance(package, dict) or "id" not in package or "name" not in package:
+        print("分层门失败：packages 里的条目缺少 id 或 name。", file=sys.stderr)
+        sys.exit(1)
+
 workspace_ids = set(meta.get("workspace_members", []))
 package_ids = {package["id"] for package in packages}
 if package_ids != workspace_ids:

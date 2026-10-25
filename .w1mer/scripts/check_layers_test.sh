@@ -142,7 +142,7 @@ expect_fail() {
     fail=$((fail + 1))
     return
   fi
-  if ! printf '%s' "$output" | grep -qF "$needle"; then
+  if ! grep -qF -- "$needle" <<<"$output"; then
     printf 'FAIL %s：输出未命中「%s」\n%s\n' "$name" "$needle" "$output"
     fail=$((fail + 1))
     return
@@ -171,7 +171,7 @@ set +e
 missing_output=$(bash "$gate" --metadata "$tmp/does-not-exist.json" 2>&1)
 missing_status=$?
 set -e
-if [ "$missing_status" -eq 2 ] && printf '%s' "$missing_output" | grep -qF "metadata 文件不存在"; then
+if [ "$missing_status" -eq 2 ] && grep -qF -- "metadata 文件不存在" <<<"$missing_output"; then
   printf 'PASS missing_metadata_file\n'
   pass=$((pass + 1))
 else
@@ -181,7 +181,14 @@ fi
 
 # 反证：删掉 rusqlite 的能力规则后，同一个越权样本必须被放行；否则说明自测没有
 # 真正覆盖能力表，只是恒绿。
-sed '/"rusqlite": {"ita-store"},/d' "$gate" >"$tmp/gate_without_rusqlite.sh"
+python3 - "$gate" "$tmp/gate_without_rusqlite.sh" <<'PY'
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+text = text.replace('    "rusqlite": {"ita-store"},\n', "")
+Path(sys.argv[2]).write_text(text, encoding="utf-8")
+PY
 if bash "$tmp/gate_without_rusqlite.sh" --metadata "$tmp/capability_misuse.json" >/dev/null 2>&1; then
   printf 'PASS capability_rule_is_load_bearing\n'
   pass=$((pass + 1))

@@ -23,7 +23,7 @@ env:
 
 # job 拓扑：四个并行 job，不设 needs。
 # fmt 不编译，秒级；lint 与 test 各用一套 target 与缓存；msrv 工具链不同，缓存天然
-# 独立。三个 job 都调用 .w1mer/scripts/verify.sh 的对应阶段，本地与 CI 只有一份
+# 独立。四个 job 都调用 .w1mer/scripts/verify.sh 的对应阶段，本地与 CI 只有一份
 # 命令清单，不再各自抄一遍。
 jobs:
   fmt:
@@ -38,7 +38,7 @@ jobs:
       - run: bash .w1mer/scripts/verify.sh fmt
 
   lint:
-    name: 分层、纯净门与 clippy
+    name: 分层门、纯净门与静态检查
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
