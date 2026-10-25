@@ -1,5 +1,5 @@
 {
   "note": "CI 推送节奏状态：每 5 个批次推送一次 origin/main；不绿优先修。主 Agent 在 batch-end 时递增 batches_since_push，到 5 即 push 并清零。",
-  "batches_since_push": 0,
+  "batches_since_push": 1,
   "last_push": "e8a7c52"
 }
