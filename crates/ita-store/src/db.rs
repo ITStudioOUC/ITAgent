@@ -38,6 +38,10 @@ pub enum StoreError {
     UnknownSession(SessionId),
     /// 事件引用的节点不属于本工作区。
     UnknownNode(NodeId),
+    /// head 比较并交换冲突：期望的节点与代次不再是当前值。
+    HeadConflict,
+    /// 帧引用的会话或节点属于另一工作区。
+    CrossWorkspace(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -55,6 +59,8 @@ impl std::fmt::Display for StoreError {
             Self::WorkspaceExists(id) => write!(f, "工作区 {id} 已存在"),
             Self::UnknownSession(id) => write!(f, "事件引用的会话 {id} 不属于本工作区"),
             Self::UnknownNode(id) => write!(f, "事件引用的节点 {id} 不属于本工作区"),
+            Self::HeadConflict => write!(f, "head 比较并交换冲突：期望的节点与代次不再是当前值"),
+            Self::CrossWorkspace(id) => write!(f, "帧引用的会话或节点 {id} 属于另一工作区"),
         }
     }
 }

@@ -10,13 +10,16 @@
 //!
 //! 迁移只允许加表加列，不改不删：事件表是不可变的真相，删列会让历史无法 replay。
 
+pub mod commit;
 pub mod db;
 pub mod events;
+mod heads;
 pub mod migrate;
 pub mod preview;
 pub mod scope;
 mod seq;
 
+pub use commit::{CommittedFrame, FrameBodyError, decode_frame, encode_frame};
 pub use db::{Store, StoreError};
 pub use events::{AppendedEvent, Event, NewEvent};
 pub use preview::PreviewLimit;
