@@ -13,8 +13,8 @@ use rusqlite::Transaction;
 
 use crate::db::StoreError;
 use crate::entries;
+use crate::fold;
 use crate::scope::WorkspaceScope;
-use crate::squash;
 
 /// 重定基线的发起模式。
 ///
@@ -120,7 +120,7 @@ pub(crate) fn rebaseline_in(
         )?;
         manifests.push(entries);
     }
-    let effective = squash::fold(&manifests);
+    let effective = fold::fold(&manifests);
 
     // 删所有增量（及其条目）。基线行只更新不删除。
     tx.execute(

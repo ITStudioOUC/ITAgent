@@ -10,26 +10,32 @@
 //!
 //! 迁移只允许加表加列，不改不删：事件表是不可变的真相，删列会让历史无法 replay。
 
+mod align;
 mod blobs;
 mod cas;
 pub mod commit;
 pub mod db;
 mod entries;
 pub mod events;
+mod fold;
 mod heads;
 pub mod migrate;
 pub mod preview;
+pub mod residual;
+pub mod restore;
 pub mod retention;
 pub mod scope;
 mod seq;
 mod snapshots;
 mod squash;
 
+pub use align::AlignResult;
 pub use commit::{CommittedFrame, FrameBodyError, decode_frame, encode_frame};
 pub use db::{Store, StoreError};
 pub use entries::SnapshotEntry;
 pub use events::{AppendedEvent, Event, NewEvent};
 pub use preview::PreviewLimit;
+pub use residual::{ResidualEntry, ResidualReason};
 pub use retention::{RebaseMode, RebaseRequest};
 pub use scope::WorkspaceScope;
 pub use snapshots::{CreatedSnapshot, SnapshotInfo};

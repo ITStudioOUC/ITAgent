@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use ita_kernel::context::{BlobRef, CheckpointId, NodeId, SessionId};
 use rusqlite::Connection;
 
+use crate::align::{self, AlignResult};
 use crate::cas;
 use crate::entries::{self, SnapshotEntry};
 use crate::events::{self, AppendedEvent, Event, NewEvent};
@@ -61,6 +62,10 @@ pub enum StoreError {
     RebaseRejectedAutonomous,
     /// 重定基线缺人工确认：留痕三列任一为空。
     RebaseMissingConfirmation,
+    /// 回滚对齐被拒：范围内存在外部改动，且未显式强制。
+    AlignRefusedExternal(String),
+    /// 回滚对齐时工作区根路径不存在。
+    AlignRootMissing(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -91,6 +96,10 @@ impl std::fmt::Display for StoreError {
                 write!(f, "自主模式重定基线被拒：没有人工确认时默认禁止")
             }
             Self::RebaseMissingConfirmation => write!(f, "重定基线缺人工确认：留痕三列任一为空"),
+            Self::AlignRefusedExternal(path) => {
+                write!(f, "回滚对齐被拒：路径 {path} 存在外部改动，未显式强制")
+            }
+            Self::AlignRootMissing(path) => write!(f, "回滚对齐时工作区根路径不存在：{path}"),
         }
     }
 }
@@ -423,6 +432,33 @@ impl Store {
         retention::rebaseline_in(&tx, scope, req)?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// 回滚对齐：把磁盘对齐到目标快照的有效状态，输出残留清单。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内沿链折叠读有效状态、对齐磁盘、组装残留清单。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// 对齐是独立动词，不折进 `create_snapshot`。范围是参数，存储层不解析工具清单。超阈值条目
+    /// 只报告。写回前核对 blobs，缺失内容标注"内容缺失"。存在外部改动时默认拒绝，除非显式强制。
+    ///
+    /// # 副作用
+    /// 读文件系统、写文件系统（写回、删除、创建目录）。
+    pub fn align(
+        &mut self,
+        scope: &WorkspaceScope,
+        target: &CheckpointId,
+        range: &[String],
+        force: bool,
+    ) -> Result<AlignResult, StoreError> {
+        let cas_root = self.cas_root.clone();
+        let tx = self.conn_mut().transaction()?;
+        let result = align::align_in(&tx, scope, target, range, force, &cas_root)?;
+        tx.commit()?;
+        Ok(result)
     }
 
     /// 供 crate 内部模块使用的连接。
