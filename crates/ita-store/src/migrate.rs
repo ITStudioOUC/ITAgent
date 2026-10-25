@@ -180,16 +180,31 @@ pub fn run(conn: &mut Connection) -> Result<u32, MigrateError> {
     Ok(MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0))
 }
 
+/// FNV-1a 64 的偏移基数。
+const FNV1A64_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+/// FNV-1a 64 的质数。
+const FNV1A64_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+/// 按 FNV-1a 64 计算字节串的哈希。
+///
+/// 逐字节异或后做回绕乘法。必须用 `wrapping_mul`：普通乘法在 debug 下会溢出
+/// panic、在 release 下回绕，同一份输入会随构建模式得到不同结果。
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = FNV1A64_OFFSET_BASIS;
+    for &byte in bytes {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV1A64_PRIME);
+    }
+    hash
+}
+
 /// 迁移脚本的内容指纹。
 ///
-/// 用标准库的哈希器而不是引入依赖：这里只需要"内容变了就不同"，不需要密码学强度。
-/// 长度与字节数一起参与，避免极短脚本的碰撞。
+/// 算法固定为 FNV-1a 64，不经过标准库的哈希实现：标准库的默认哈希器不保证跨
+/// Rust 版本稳定，而指纹不一致会让既有数据库以 `ScriptChanged` 拒绝启动。前缀用于
+/// 未来换算法时识别旧值；指纹只用于发现意外改动，不承担防篡改。
 fn script_hash(sql: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    sql.hash(&mut hasher);
-    sql.len().hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    format!("fnv1a64:{:016x}", fnv1a64(sql.as_bytes()))
 }
 
 /// 当前已执行的最高版本。
@@ -289,5 +304,32 @@ mod tests {
         // 表已存在时再跑一遍迁移 SQL 不应失败（脚本自带 IF NOT EXISTS）。
         conn.execute_batch(MIGRATIONS[0].sql).expect("重复执行 SQL 应当成功");
         conn.execute_batch(MIGRATIONS[1].sql).expect("重复执行 SQL 应当成功");
+    }
+
+    /// 指纹匹配 FNV-1a 64 的公开向量：空串与单字节钉住常量，foobar 覆盖多轮进位。
+    #[test]
+    fn script_hash_matches_known_vectors() {
+        assert_eq!(script_hash(""), "fnv1a64:cbf29ce484222325");
+        assert_eq!(script_hash("a"), "fnv1a64:af63dc4c8601ec8c");
+        assert_eq!(script_hash("foobar"), "fnv1a64:85944171f73967e8");
+    }
+
+    /// 同一脚本多次计算结果相同：指纹里不能混入随机量或时间。
+    #[test]
+    fn script_hash_is_stable_for_same_input() {
+        let sql = "CREATE TABLE t (id TEXT PRIMARY KEY);";
+        assert_eq!(script_hash(sql), script_hash(sql));
+    }
+
+    /// 内容变化必然换指纹：这是发现已发布迁移被改动的唯一判据。
+    #[test]
+    fn script_hash_changes_with_content() {
+        assert_ne!(script_hash("SELECT 1"), script_hash("SELECT 2"));
+    }
+
+    /// 多字节脚本按 UTF-8 字节计算而不是按字符，这条钉住迭代单位。
+    #[test]
+    fn script_hash_uses_utf8_bytes() {
+        assert_eq!(script_hash("迁移"), "fnv1a64:b07037ac985004f6");
     }
 }
