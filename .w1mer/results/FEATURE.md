@@ -314,3 +314,57 @@ seq 从 `workspace_seq` 计数器读改写分配，不用 `MAX(seq) + 1`。第 3
 非必需失败只标记降级、非必需未就绪计入降级、就绪不等于运行、七 unit 最小拓扑激活与降级）；
 `ita-store` 的 `units.rs` 7 项（unit 状态落库、读回、缺失 unit 返回 None、全部 unit 状态按 id
 排序、域外状态字符串被拒、upsert 覆盖、`Store` 方法接线）。全仓测试总数从 430 项增至 449 项。
+
+## 07.4 能力集快照与变更推送
+
+结论：能力集快照与进程内变更推送落地。`CapabilitySet` 带 `version`/`ready`/`degraded` 三字段，
+`build_capability_set` 纯函数把 `units` 表读出的 unit 状态投影成能力集（`ready` 进就绪列表，
+`degraded` 与 `failed` 进降级列表，两列表按标签排序）。`CapabilityWatcher` 持 `Store` 句柄，
+`subscribe` 注册订阅者并立即推完整能力集（版本 0），`notify_change` 读表重建、版本号递增、
+向全部订阅者推带版本号的完整能力集。计划第四节的十条验收全部写成测试并通过，五条裁决逐条
+守住：能力集读 `units` 表不读内存；版本号是进程内计数器不落库（本批零新增迁移）；推送走
+进程内 watch 通道不引入 tokio；"带版本号的增量"是完整能力集加递增版本号，不是真 delta；
+工具目录追加不混进本批，watch 通道设计成可承载（消息类型是通用 `CapabilityUpdate` 枚举，
+能力集变更是其中一种消息）。
+
+### 提交
+
+| 提交 | 主题 | 改动 |
+|---|---|---|
+| `5e46617` | 能力集快照与进程内变更推送，unit 状态投影成能力集 | `capability.rs` 新建 `CapabilitySet` 与 `build_capability_set`（含 6 项内联测试）；`watch.rs` 新建 `CapabilityWatcher`、`CapabilityUpdate` 与 `subscribe`/`notify_change`（含 6 项内联测试）；`mod.rs` 声明两模块并再导出关键类型，模块头注释同步 |
+
+### 验收覆盖
+
+| 验收 | 用例 |
+|---|---|
+| 能力集是 unit 就绪状态的投影 | `capability_set_projects_unit_states` |
+| 订阅者先收完整能力集 | `subscribe_pushes_full_capability_set_at_version_zero` |
+| 降级后收带版本号的增量 | `notify_change_pushes_version_incremented_set` |
+| 版本号单调递增 | `version_is_monotonically_increasing` |
+| 就绪与降级区分 | `ready_and_degraded_lists_are_disjoint` |
+| 失败 unit 计入降级 | `failed_unit_counts_as_degraded` |
+| 能力集变更推送给已连接客户端 | `all_subscribers_receive_the_push` |
+| 推送与工具目录追加是同一套机制 | `channel_carries_generic_capability_update` |
+| 七 unit 最小拓扑能力集 | `seven_unit_minimal_topology_capability_set` |
+| 能力集读 `units` 表 | `capability_set_is_rebuilt_from_units_table` |
+
+### 验证
+
+| 命令 | 退出码 | 结果 |
+|---|---|---|
+| `cargo build --workspace --locked` | 0 | 全工作区构建通过 |
+| `cargo nextest run --workspace --locked` | 0 | 461 项通过，0 项跳过（新增 12 项） |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | 零告警 |
+| `cargo fmt --all --check` | 0 | 无需格式化 |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | 0 | 文档构建通过 |
+| `cargo test --doc --workspace --locked` | 0 | doctest 通过 |
+| `bash .w1mer/scripts/check_layers.sh` | 0 | 分层门通过 |
+| `bash .w1mer/scripts/check_kernel_purity.sh` | 0 | 内核纯净门通过 |
+| `bash .w1mer/scripts/verify.sh msrv` | 0 | 1.85.0 检查通过 |
+
+### 新增测试分布
+
+新增 12 项测试，全部在 `ita-server` 的 `units` 模块内联：`capability.rs` 6 项（投影、就绪与
+降级区分、失败计入降级、七 unit 最小拓扑、空记录得空能力集、输出按标签排序）、`watch.rs`
+6 项（订阅先收完整能力集、降级后收带版本号的增量、版本号单调递增、能力集读 `units` 表、
+两个订阅者都收到推送、通道承载通用能力变更消息）。全仓测试总数从 449 项增至 461 项。

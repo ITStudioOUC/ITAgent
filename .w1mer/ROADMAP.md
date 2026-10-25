@@ -151,7 +151,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 07.1 | 拓扑类型与依赖无环校验 | .w1mer/detail/06_plan-07.md | done | 0 | unit 拓扑类型与三种依赖的无环校验落地：UnitId 标签名义类型、DepKind 三变体方向语义一致、find_cycle 三色标记对三种边并集判定、startup_order 是词典序最小的拓扑序，lease 与 tools 双向记号落单方向边；十条验收全过，413 项测试全绿 |
 | 07.2 | 状态机、就绪探针与停止顺序 | .w1mer/detail/06_plan-07.md | done | 0 | unit 状态机、就绪探针与监督者落地：六状态加纯转移函数非法转移返回 None、就绪探针三值结果加可注入 trait、监督者按拓扑序启动逆序停止失败不级联重启；十条验收全过，430 项测试全绿 |
 | 07.3 | 必需与非必需启动门与降级 | .w1mer/detail/06_plan-07.md | done | 0 | 必需与非必需启动门与降级落地：StartupPlan 声明必需与非必需 unit 并与拓扑交叉校验，activate 纯函数必需全部 Ready 才就绪、非必需失败只标记降级，units 表建表与 unit 状态读写落库；十条验收全过，449 项测试全绿 |
-| 07.4 | 能力集快照与变更推送 | .w1mer/detail/06_plan-07.md | todo | 0 |
+| 07.4 | 能力集快照与变更推送 | .w1mer/detail/06_plan-07.md | done | 0 | 能力集快照与进程内变更推送落地：capability.rs 与 watch.rs 两文件，CapabilitySet 带 version/ready/degraded 三字段，build_capability_set 纯函数把 units 表读出的 unit 状态投影成能力集（ready 进就绪列表，degraded 与 failed 进降级列表），CapabilityWatcher 持 Store 句柄，subscribe 注册订阅者并立即推完整能力集（版本 0），notify_change 读表重建、版本号递增、向全部订阅者推带版本号的完整能力集；新增 12 条用例，verify.sh all 与 msrv 全绿，提交 5e46617 |
 | 08.1 | Invocation 信封与版本协商 | .w1mer/detail/07_plan-08.md | todo | 0 |
 | 08.2 | 本地 socket 与连接级工作区绑定 | .w1mer/detail/07_plan-08.md | todo | 0 |
 | 08.3 | 权威与遥测分流、有界队列与背压 | .w1mer/detail/07_plan-08.md | todo | 0 |
