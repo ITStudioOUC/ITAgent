@@ -2,8 +2,8 @@
 //!
 //! unit 是 server 内固定命名的子系统（store、router、ipc、lease、tools、model、telemetry），
 //! 拓扑在启动时静态声明，不动态建行。本模块含拓扑类型与无环校验（`topology`）、状态机
-//! （`state`）、就绪探针（`probe`）、监督者（`supervisor`）、启动计划（`plan`）与启动门
-//! （`activation`），不含能力集快照。
+//! （`state`）、就绪探针（`probe`）、监督者（`supervisor`）、启动计划（`plan`）、启动门
+//! （`activation`）、能力集快照（`capability`）与能力变更推送（`watch`）。
 //!
 //! unit 与工作流节点是两套监督语义，靠类型与文档分开：本模块的类型独立于 `ita-workflow`
 //! 的节点类型，不复用、不混用。
@@ -13,18 +13,22 @@
 //! 才能仲裁跨工作区资源，工具目录注册不依赖租约仲裁），`tools` 先启动。测试按这个方向实例化。
 
 pub mod activation;
+pub mod capability;
 pub mod plan;
 pub mod probe;
 pub mod state;
 pub mod supervisor;
 pub mod topology;
+pub mod watch;
 
 pub use activation::{ActivationResult, activate};
+pub use capability::{CapabilitySet, build_capability_set};
 pub use plan::{StartupPlan, StartupPlanError};
 pub use probe::{ProbeResult, ReadinessProbe};
 pub use state::{UnitEvent, UnitState, next};
 pub use supervisor::{ShutdownResult, StepOutcome, Supervisor};
 pub use topology::{CycleError, Topology};
+pub use watch::{CapabilityUpdate, CapabilityWatcher};
 
 use std::fmt;
 
