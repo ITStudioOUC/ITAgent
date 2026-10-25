@@ -188,7 +188,7 @@ const FNV1A64_PRIME: u64 = 0x0000_0100_0000_01b3;
 /// 按 FNV-1a 64 计算字节串的哈希。
 ///
 /// 逐字节异或后做回绕乘法。必须用 `wrapping_mul`：普通乘法在 debug 下会溢出
-/// panic、在 release 下回绕，同一份输入会随构建模式得到不同结果。
+/// panic、在 release 下回绕，两种构建模式的行为不一致。
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash = FNV1A64_OFFSET_BASIS;
     for &byte in bytes {
