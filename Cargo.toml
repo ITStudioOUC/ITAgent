@@ -17,6 +17,8 @@ members = [
 [workspace.package]
 version = "0.1.30"
 edition = "2024"
+# 1.85 是 edition 2024 的起始版本。该版本下不得使用 let-chains（1.88 才稳定），
+# CI 的 msrv job 会用 1.85.0 跑全目标检查。
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/ITStudioOUC/ITAgent"

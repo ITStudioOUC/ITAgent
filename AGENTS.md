@@ -30,13 +30,20 @@ w1mer batch-start <task> / batch-end <task> / ensure / role-join / show / status
 
 ## 2. 验证纪律
 
-日常验证三件套，缺一不算完成：
+日常验证统一入口是 `.w1mer/scripts/verify.sh`，CI 的 fmt、lint、test 三个 job 调用
+同一脚本的对应阶段，本地与 CI 只有一份命令清单：
 
 ```
-cargo nextest run -p <crate>     # 单测
-cargo build --workspace          # 全量构建
-cargo clippy --workspace --all-targets   # 零新增告警（与改动前对比）
+bash .w1mer/scripts/verify.sh fmt    # 格式
+bash .w1mer/scripts/verify.sh lint   # 分层门、门自测、纯净门、shellcheck、clippy、rustdoc
+bash .w1mer/scripts/verify.sh test   # 构建、nextest、doctest
+bash .w1mer/scripts/verify.sh all    # 以上三项依次执行
 ```
+
+缺一不算完成。`all` 不含 MSRV；CI 的独立 job 用 1.85.0 跑
+`cargo +1.85.0 check --workspace --all-targets --locked`，本地可用
+`bash .w1mer/scripts/verify.sh msrv`（需先装 1.85.0 工具链）。shellcheck 缺失会直接
+失败，用 `SHELLCHECK` 指向自定义二进制。
 
 用 nextest 而非 `cargo test`：每测试独立进程，能把"靠共享全局状态才通过"的测试
 暴露出来。若某测试在 nextest 下失败而 `cargo test` 通过，是该修的隐藏状态依赖，

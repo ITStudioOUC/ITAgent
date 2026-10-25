@@ -6,10 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
-# 同一分支的新推送取消上一轮未完成的 run，避免过期任务继续占用 runner。
+# 同一 PR 的新推送取消上一轮未完成的 run：过期 run 的状态已无意义。main 的推送不
+# 取消，保留每个提交的完整记录；本仓按批次推送，记录本身有参考价值。
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # CI 只读仓库内容，不需要写权限。
 permissions:
@@ -20,9 +21,10 @@ env:
   # 增量编译在 CI 上没有意义：缓存目录每次都是新的，只会多占空间。
   CARGO_INCREMENTAL: "0"
 
-# job 拓扑：fmt 不编译，单独一个秒级 job；两道门与 clippy 共用一套 target 与缓存；
-# 构建与测试放在同一个 job，因为 job 之间不共享文件系统，靠 artifact 传编译产物是负收益。
-# 三者并行，不设 needs——needs 只会把并行变串行。
+# job 拓扑：四个并行 job，不设 needs。
+# fmt 不编译，秒级；lint 与 test 各用一套 target 与缓存；msrv 工具链不同，缓存天然
+# 独立。三个 job 都调用 .w1mer/scripts/verify.sh 的对应阶段，本地与 CI 只有一份
+# 命令清单，不再各自抄一遍。
 jobs:
   fmt:
     name: 格式
@@ -33,7 +35,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all --check
+      - run: bash .w1mer/scripts/verify.sh fmt
 
   lint:
     name: 分层、纯净门与 clippy
@@ -47,14 +49,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # 分层门只读元数据；纯净门的依赖树与构建脚本检查也不编译，两者都放在 clippy
-      # 之前，尽量在编译前失败。
-      - name: 分层与能力归属门
-        run: bash .w1mer/scripts/check_layers.sh
-      - name: 内核纯净门
-        run: bash .w1mer/scripts/check_kernel_purity.sh
-      - name: clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # shellcheck 在 runner 镜像里通常已预装；缺失时补装，避免脚本静态检查被跳过。
+      - name: 确保 shellcheck 可用
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+      - run: bash .w1mer/scripts/verify.sh lint
 
   test:
     name: 构建与测试
@@ -69,5 +71,16 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
-      - run: cargo build --workspace --locked
-      - run: cargo nextest run --workspace --locked
+      - run: bash .w1mer/scripts/verify.sh test
+
+  msrv:
+    name: MSRV 1.85
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: bash .w1mer/scripts/verify.sh msrv

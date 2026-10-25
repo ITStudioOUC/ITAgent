@@ -99,8 +99,8 @@ cargo nextest run --workspace      # 跑测试（nextest 需自行安装）
 w1mer list                         # 看当前该做什么（w1mer 由 w1mer skill 安装到 PATH）
 ```
 
-日常验证三件套：`cargo nextest run -p <crate>`、`cargo build --workspace`、
-`cargo clippy --workspace --all-targets`。
+日常验证统一入口：`bash .w1mer/scripts/verify.sh all`。它依次跑格式、静态检查与测试，
+CI 的三个 job 调用同一脚本；MSRV 由单独的 `verify.sh msrv` 用 1.85.0 工具链检查。
 
 开发由 W1MER 协议推进（三并调度：reviewer、implementer、explorer），规划目录
 `.w1mer/` 随仓库提交，是跨批次的事实来源。

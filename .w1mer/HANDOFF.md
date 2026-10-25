@@ -47,10 +47,10 @@
    `.w1mer/STATE.json` 里的 `type` 与 `roles`。
 2. 派 implementer（`ensure` + `role-join ... implementer`）与 explorer（只读，可同时开）；
    复审上一批要派 reviewer。三者并行是常态，不是可选项。
-3. 实现 + 六项验证，每条看**退出码**，不要用管道过滤输出：`cargo nextest run --workspace
-   --locked`、`cargo build --workspace --locked`、`cargo clippy --workspace --all-targets
-   --locked -- -D warnings`、`cargo fmt --all --check`、`bash
-   .w1mer/scripts/check_kernel_purity.sh`、`bash .w1mer/scripts/check_layers.sh`。
+3. 实现 + 验证：`bash .w1mer/scripts/verify.sh all`，它依次跑 fmt、lint（分层门、
+   门自测、纯净门、shellcheck、clippy、rustdoc）与 test（构建、nextest、doctest）。
+   再跑一次 `bash .w1mer/scripts/verify.sh msrv`（需要 1.85.0 工具链）。每条看
+   **退出码**，不要用管道过滤输出。
 4. **先派 reviewer 并让它的 `role-join` 成功**，复审结论落盘并提交，再到第 5 步。
 5. `bash .w1mer/scripts/bump_version.sh batch`（一个批次一次，脚本同步 Cargo.lock），
    放在**最后一次提交**里。

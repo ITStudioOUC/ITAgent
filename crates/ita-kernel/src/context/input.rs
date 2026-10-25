@@ -120,10 +120,11 @@ impl ResolveInput {
             return Err(InputError::NotFixedLayer);
         }
         for frame in &self.frames {
-            if let Some(checkpoint) = &frame.checkpoint
-                && !self.checkpoint_facts.iter().any(|(id, _)| id == checkpoint)
-            {
-                return Err(InputError::MissingCheckpointFacts(checkpoint.clone()));
+            // 不用 let-chains：rust-version 锚在 1.85，而该语法 1.88 才稳定。
+            if let Some(checkpoint) = &frame.checkpoint {
+                if !self.checkpoint_facts.iter().any(|(id, _)| id == checkpoint) {
+                    return Err(InputError::MissingCheckpointFacts(checkpoint.clone()));
+                }
             }
         }
         for node in self.recent.iter().chain(self.current.iter()) {

@@ -135,10 +135,11 @@ pub fn run(conn: &mut Connection) -> Result<u32, MigrateError> {
         let Some(migration) = MIGRATIONS.iter().find(|m| m.version == *version) else {
             continue;
         };
-        if let Some(recorded) = recorded
-            && recorded != &script_hash(migration.sql)
-        {
-            return Err(MigrateError::ScriptChanged { version: *version });
+        // 不用 let-chains：rust-version 锚在 1.85，而该语法 1.88 才稳定。
+        if let Some(recorded) = recorded {
+            if recorded != &script_hash(migration.sql) {
+                return Err(MigrateError::ScriptChanged { version: *version });
+            }
         }
     }
 

@@ -18,18 +18,47 @@
 
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
+usage() {
+  printf '用法：%s [--metadata <文件>]\n' "$0" >&2
+  printf '  --metadata 只接受 cargo metadata --no-deps 的输出，供自测与离线诊断使用。\n' >&2
+}
 
-# 与仓库其余 cargo 步骤一致带 --locked。--no-deps 只读清单、不解析锁文件，所以
-# 清单改动不会让这一步因锁文件过期而失败；真失败时把原始诊断原样打出来，不猜测原因。
+metadata_input=""
+case "${1:-}" in
+  "") ;;
+  --metadata)
+    if [ "$#" -ne 2 ] || [ -z "${2:-}" ]; then
+      usage
+      exit 2
+    fi
+    metadata_input=$2
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
 meta_file=$(mktemp)
 err_file=$(mktemp)
 trap 'rm -f "$meta_file" "$err_file"' EXIT
 
-if ! cargo metadata --no-deps --locked --format-version 1 >"$meta_file" 2>"$err_file"; then
-  printf '分层门失败：cargo metadata 执行失败，原因如下：\n' >&2
-  sed 's/^/  /' "$err_file" >&2
-  exit 1
+if [ -n "$metadata_input" ]; then
+  if [ ! -f "$metadata_input" ]; then
+    printf '分层门失败：metadata 文件不存在：%s\n' "$metadata_input" >&2
+    exit 2
+  fi
+  cp "$metadata_input" "$meta_file"
+else
+  cd "$(git rev-parse --show-toplevel)"
+
+  # 与仓库其余 cargo 步骤一致带 --locked。--no-deps 只读清单、不解析锁文件，所以
+  # 清单改动不会让这一步因锁文件过期而失败；真失败时把原始诊断原样打出来。
+  if ! cargo metadata --no-deps --locked --format-version 1 >"$meta_file" 2>"$err_file"; then
+    printf '分层门失败：cargo metadata 执行失败，原因如下：\n' >&2
+    sed 's/^/  /' "$err_file" >&2
+    exit 1
+  fi
 fi
 
 python3 - "$meta_file" <<'PY'
@@ -37,8 +66,30 @@ import json
 import sys
 from pathlib import Path
 
-meta = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+try:
+    meta = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    print(f"分层门失败：metadata 不是合法 JSON（{error}）", file=sys.stderr)
+    sys.exit(1)
+
 packages = meta["packages"]
+workspace_ids = set(meta.get("workspace_members", []))
+package_ids = {package["id"] for package in packages}
+if package_ids != workspace_ids:
+    extra = sorted(package_ids - workspace_ids)
+    missing = sorted(workspace_ids - package_ids)
+    details = []
+    if extra:
+        details.append("多出包 " + "、".join(extra))
+    if missing:
+        details.append("缺少包 " + "、".join(missing))
+    print(
+        "分层门失败：--metadata 只接受 cargo metadata --no-deps 的输出；"
+        + "；".join(details),
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
 members = {package["name"] for package in packages}
 
 # 每个成员允许依赖的 ita-* crate。键必须与 workspace 成员完全一致：新增成员不登记

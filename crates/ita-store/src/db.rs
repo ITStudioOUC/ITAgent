@@ -2,7 +2,7 @@
 //!
 //! 一个 [`Store`] 对应一个数据库文件，且只由 server 进程持有。worker 与执行器不持有它，
 //! 因此"作用域泄漏"只可能发生在 server 内部，而 server 内部的接口形状（见
-//! [`WorkspaceScope`](crate::WorkspaceScope)）已经把它堵住。
+//! [`WorkspaceScope`]）已经把它堵住。
 //!
 //! 写路径的纪律在这里落地：单连接、`BEGIN IMMEDIATE`、`busy_timeout`。不使用延迟事务，
 //! 因为它会在提交时才升级锁，产生无法重试的 `SQLITE_BUSY`。
