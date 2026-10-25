@@ -30,6 +30,7 @@ pub mod scope;
 mod seq;
 mod snapshots;
 mod squash;
+mod units;
 
 pub use align::AlignResult;
 pub use commit::{CommittedFrame, FrameBodyError, decode_frame, encode_frame};
@@ -42,3 +43,4 @@ pub use residual::{ResidualEntry, ResidualReason};
 pub use retention::{RebaseMode, RebaseRequest};
 pub use scope::WorkspaceScope;
 pub use snapshots::{CreatedSnapshot, SnapshotInfo};
+pub use units::UnitState;

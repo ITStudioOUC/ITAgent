@@ -85,6 +85,7 @@ impl From<rusqlite::Error> for MigrateError {
 pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 1, name: "core", sql: include_str!("../migrations/0001_core.sql") },
     Migration { version: 2, name: "content", sql: include_str!("../migrations/0002_content.sql") },
+    Migration { version: 3, name: "units", sql: include_str!("../migrations/0003_units.sql") },
 ];
 
 /// 执行全部待执行的迁移。
@@ -230,8 +231,8 @@ mod tests {
     fn first_migration_creates_tables_and_records_version() {
         let mut conn = memory();
         let version = run(&mut conn).expect("迁移应当成功");
-        assert_eq!(version, 2);
-        assert_eq!(current_version(&conn).expect("应当可读"), 2);
+        assert_eq!(version, 3);
+        assert_eq!(current_version(&conn).expect("应当可读"), 3);
     }
 
     /// 重复执行不重复建表也不报错，迁移是幂等的。
@@ -240,12 +241,12 @@ mod tests {
         let mut conn = memory();
         run(&mut conn).expect("首次应当成功");
         let version = run(&mut conn).expect("重复执行应当成功");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM schema_version", [], |row| row.get(0))
             .expect("应当可读");
-        assert_eq!(count, 2, "版本行不应重复");
+        assert_eq!(count, 3, "版本行不应重复");
     }
 
     /// 版本出现空洞时拒绝继续，跳版本的库不会被悄悄升级。
@@ -283,12 +284,12 @@ mod tests {
         run(&mut conn).expect("首次应当成功");
         conn.execute(
             "INSERT INTO schema_version (version, name, applied_at, script_hash)
-             VALUES (3, 'future', 0, NULL)",
+             VALUES (4, 'future', 0, NULL)",
             [],
         )
         .expect("应当可插");
         let err = run(&mut conn).expect_err("应当被拒");
-        assert!(matches!(err, MigrateError::DatabaseNewer { database: 3, supported: 2 }));
+        assert!(matches!(err, MigrateError::DatabaseNewer { database: 4, supported: 3 }));
     }
 
     /// 脚本里不允许破坏性语句，只加不改的纪律靠扫描守住。
@@ -311,6 +312,7 @@ mod tests {
         // 表已存在时再跑一遍迁移 SQL 不应失败（脚本自带 IF NOT EXISTS）。
         conn.execute_batch(MIGRATIONS[0].sql).expect("重复执行 SQL 应当成功");
         conn.execute_batch(MIGRATIONS[1].sql).expect("重复执行 SQL 应当成功");
+        conn.execute_batch(MIGRATIONS[2].sql).expect("重复执行 SQL 应当成功");
     }
 
     /// 指纹匹配 FNV-1a 64 的公开向量：空串与单字节钉住常量，foobar 覆盖多轮进位。

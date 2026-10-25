@@ -23,6 +23,7 @@ use crate::retention::{self, RebaseRequest};
 use crate::scope::WorkspaceScope;
 use crate::snapshots::{self, CreatedSnapshot, SnapshotInfo};
 use crate::squash;
+use crate::units::{self, UnitState};
 
 /// 存储层错误。
 #[derive(Debug)]
@@ -67,6 +68,8 @@ pub enum StoreError {
     AlignRefusedExternal(String),
     /// 回滚对齐时工作区根路径不存在。
     AlignRootMissing(String),
+    /// unit 状态字符串不在取值域内。
+    InvalidUnitState(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -101,6 +104,7 @@ impl std::fmt::Display for StoreError {
                 write!(f, "回滚对齐被拒：路径 {path} 存在外部改动，未显式强制")
             }
             Self::AlignRootMissing(path) => write!(f, "回滚对齐时工作区根路径不存在：{path}"),
+            Self::InvalidUnitState(state) => write!(f, "unit 状态 {state} 不在取值域内"),
         }
     }
 }
@@ -491,6 +495,48 @@ impl Store {
         Ok(GcResult { deleted: deleted.len() as u64, observed, orphan_files })
     }
 
+    /// 写入一个 unit 的状态。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内写入 unit 状态（插入或更新）。
+    /// 3. 提交。
+    ///
+    /// # 边界与前提
+    /// 写入是权威写，提交后才返回。unit 标识是校验过的标签，不是 ULID。同一 unit 的多次写入
+    /// 只保留最后一次，`updated_at` 反映最后写入时刻。
+    ///
+    /// # 副作用
+    /// 写 `units` 表。
+    pub fn set_unit_state(&mut self, id: &str, state: UnitState) -> Result<(), StoreError> {
+        let tx = self.conn_mut().transaction()?;
+        units::set_unit_state(&tx, id, state)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 读取一个 unit 的状态。
+    ///
+    /// # 边界与前提
+    /// unit 不存在时返回 `None`，不报错。
+    ///
+    /// # 副作用
+    /// 只读。
+    pub fn read_unit_state(&self, id: &str) -> Result<Option<UnitState>, StoreError> {
+        units::read_unit_state(self.conn(), id)
+    }
+
+    /// 读取全部 unit 的状态，按 unit 标识排序。
+    ///
+    /// # 边界与前提
+    /// 空库返回空列表。
+    ///
+    /// # 副作用
+    /// 只读。
+    pub fn read_all_unit_states(&self) -> Result<Vec<(String, UnitState)>, StoreError> {
+        units::read_all_unit_states(self.conn())
+    }
+
     /// 供 crate 内部模块使用的连接。
     ///
     /// # 边界与前提
@@ -577,7 +623,7 @@ mod tests {
     #[test]
     fn migrations_completed_on_open() {
         let store = Store::open_in_memory().expect("应当可以打开");
-        assert_eq!(store.schema_version().expect("应当可读"), 2);
+        assert_eq!(store.schema_version().expect("应当可读"), 3);
     }
 
     /// 注册工作区后可以取作用域，业务查询能绑定到该工作区。
