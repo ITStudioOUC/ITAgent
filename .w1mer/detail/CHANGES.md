@@ -321,3 +321,13 @@ state: active
   复审正文在 `53c8ec5`。`0002_content.sql` 的四次改动（48d41d2、73e4528、ad4849a、624d4b7）
   与 `0001_core.sql` 建表后的两次改动（73e4528、70be8ba）在 `CHANGES` 里各有对应条目，没有
   静默变更。
+- 批次 02.8 把 AGENTS 第 7 节的依赖方向、能力归属与单二进制形态变成可执行门：
+  `.w1mer/scripts/check_layers.sh` 成为 crate 依赖图与敏感能力归属的唯一权威，
+  `.github/workflows/ci.yml` 的 lint job 在纯净门与 clippy 之前运行它。契约层面新增三条可执行
+  约束：任何成员的 `ita-*` 直接依赖（含 dev 与 build）必须落在允许表内；敏感能力（数据库驱动、
+  HTTP 与 TLS、沙箱原语、`libc`、`nix`、`rustix`、`ulid`）只允许出现在登记的 crate 的普通依赖里；
+  workspace 只能产出登记过的二进制。允许表里有两处裁决：`ita-tools` 依赖 `ita-sandbox` 是为了
+  构建沙箱直接使用 `Sandbox` trait 与平台探针（`Policy` 与 `Fidelity` 类型仍在 kernel），
+  `ita-proto` 依赖 `ita-model` 是为了代理帧与流式转发复用归一化类型，反向边禁止。已知边界：
+  不看传递依赖，不看被允许 `libc` 的 crate 里的裸系统调用，构建脚本与 `std::net` 也不在检查内；
+  它只是分层守卫，无出网的真正边界仍是沙箱策略。
