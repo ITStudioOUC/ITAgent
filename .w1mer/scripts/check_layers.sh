@@ -14,13 +14,11 @@
 # 发系统调用。无出网的真正边界是沙箱策略，不是这里。
 #
 # 新增成员、放宽某条边、引入新的敏感能力时，先改本文件的常量，再同步
-# .w1mer/codebase/STACK.md 与 STRUCTURE.md。脚本是唯一权威来源，两份文档是镜像。
+# .w1mer/codebase/STACK.md 的摘要与 STRUCTURE.md 的允许表。脚本是唯一权威来源。
 
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
-
-die() { printf '分层门失败：%s\n' "$*" >&2; exit 1; }
 
 # 与仓库其余 cargo 步骤一致带 --locked。--no-deps 只读清单、不解析锁文件，所以
 # 清单改动不会让这一步因锁文件过期而失败；真失败时把原始诊断原样打出来，不猜测原因。
