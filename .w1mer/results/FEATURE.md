@@ -173,3 +173,68 @@ seq 从 `workspace_seq` 计数器读改写分配，不用 `MAX(seq) + 1`。第 3
 
 新增 18 项测试，全部内联在 `ita-server` 的 `units` 模块：`mod.rs` 的 `UnitId` 解析校验与
 `Ord`/`Hash` 派生 8 项，`topology.rs` 的十条验收 10 项。全仓测试总数从 395 项增至 413 项。
+
+## 07.2 状态机、就绪探针与停止顺序
+
+结论：unit 状态机、就绪探针与监督者落地。六状态机是纯转移函数，非法转移返回 `None` 而不
+是原地不动，"就绪不等于运行"由 `Starting`（进程活着但未就绪）与 `Ready`（探针通过、功能
+可用）的区分承载。就绪探针是三值结果（就绪/未就绪/失败）加可注入 trait，探针是"功能可用"
+判定，不是"进程活着"判定。监督者是同步的，按拓扑序启动（一个 unit 全部依赖 `Ready` 才启
+动）、按逆拓扑序停止；失败的单位永不重启、其依赖者永不启动（状态机层面与监督者层面双层
+保障）。07.2 零新增依赖、不建表、不碰 tokio。计划第四节的十条验收全部写成测试并通过，验
+证命令退出码全为 0。
+
+### 提交
+
+| 提交 | 主题 | 改动 |
+|---|---|---|
+| `4c2742b` | unit 状态机、就绪探针与监督者按拓扑序启动逆序停止 | `units/state.rs` 新建 `UnitState` 六变体、`UnitEvent` 六变体与纯转移函数 `next`；`units/probe.rs` 新建 `ProbeResult` 三变体与 `ReadinessProbe` trait；`units/supervisor.rs` 新建 `Supervisor`（拓扑、状态表、探针）、`step`、`run_until_blocked`、`shutdown`、查询方法、`StepOutcome`/`ShutdownResult`；`units/mod.rs` 声明三模块并再导出关键类型；`units/topology.rs` 加只读 `dependencies_of` 访问器 |
+
+### 状态机、就绪探针与监督者
+
+`UnitState` 是六个变体：`NotStarted`、`Starting`、`Ready`、`Failed`、`Stopping`、`Stopped`。
+转移函数 `next(state, event) -> Option<UnitState>` 是纯函数，非法转移返回 `None`。合法转移
+边是：未启动加 `Start` 到启动中；启动中加 `ProbeReady` 到就绪；启动中加 `ProbeFailed` 到失
+败；启动中加 `ProbeNotReady` 到启动中（原地重试）；就绪加 `Stop` 到停止中；停止中加
+`Stopped` 到已停止。其余组合都返回 `None`。
+
+`ProbeResult` 是三个变体：`Ready`、`NotReady`、`Failed`。`ReadinessProbe` trait 的唯一方法
+是 `probe(&self, unit: &UnitId) -> ProbeResult`。监督者持有 `Box<dyn ReadinessProbe>`，测试
+注入假探针。探针是"功能可用"判定，不是"进程活着"判定，真实实现留后。
+
+`Supervisor` 持有 `topology: Topology`、`states: HashMap<UnitId, UnitState>`、
+`probe: Box<dyn ReadinessProbe>`。构造时所有 unit 初始化为 `NotStarted`。`step` 按启动顺序
+遍历，找到第一个 `NotStarted` 且全部依赖都 `Ready` 的 unit，转移到 `Starting` 并探针，按探针
+结果转移；`Starting` 的 unit 会被重新探针。`StepOutcome` 是 `Progressed(UnitId)` 或
+`Blocked`。`run_until_blocked` 反复调 `step` 直到 `Blocked`。`shutdown` 按启动顺序的逆序遍历，
+对每个 `Ready` 的 unit 执行 `Ready → Stopping → Stopped`。
+
+### 边界与裁决
+
+- `Failed` unit 永不重启、其依赖者永不启动。双层保障：状态机层面 `next(Failed, Start)` 返回
+  `None`；监督者层面 `Failed` unit 不是 `NotStarted`，不会被重新选中，其依赖者因依赖未
+  `Ready` 而永不启动。
+- 失败不阻塞独立 unit：一个 unit 的失败只影响其依赖者，不影响独立 unit。
+- 一个 unit 只有在全部依赖都 `Ready` 时才启动。依赖是 `Starting`（未就绪）时依赖者不启动。
+- `shutdown` 只停 `Ready` 的 unit；`Failed`、`NotStarted`、`Stopped` 的 unit 跳过。
+- 监督者需要读依赖边，而 07.1 的 `Topology` 不暴露边。因此在 `topology.rs` 加只读
+  `dependencies_of` 访问器。这是对 07.1 产出的最小增补，不改环检测与启动顺序的既有行为。
+
+### 验证
+
+| 命令 | 退出码 | 结果 |
+|---|---|---|
+| `cargo build --workspace --locked` | 0 | 全工作区构建通过 |
+| `cargo nextest run --workspace --locked` | 0 | 430 项通过，0 项跳过（新增 17 项） |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | 零告警 |
+| `cargo fmt --all --check` | 0 | 无需格式化 |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | 0 | 文档构建通过 |
+| `cargo test --doc --workspace --locked` | 0 | doctest 通过 |
+| `bash .w1mer/scripts/check_layers.sh` | 0 | 分层门通过 |
+| `bash .w1mer/scripts/check_kernel_purity.sh` | 0 | 内核纯净门通过 |
+
+### 新增测试分布
+
+新增 17 项测试，全部内联在 `ita-server` 的 `units` 模块：`state.rs` 的转移函数 8 项（含非法
+转移被拒、失败 unit 不可重启），`probe.rs` 的假探针 1 项，`supervisor.rs` 的十条验收 8 项。
+全仓测试总数从 413 项增至 430 项。

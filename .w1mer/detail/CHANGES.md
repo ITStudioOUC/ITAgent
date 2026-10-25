@@ -457,3 +457,12 @@ state: active
   squash 删增量条目但折叠后有效状态仍被新基线条目引用，两者都是单写者顺序操作无并发。宽限期不重启
   不是缺陷：ADR 0018 把宽限期绑在在途工具生命周期上，靠租约表（`extra_roots`）保护，不是靠宽限期
   重启。
+- 批次 07.1 新增 `crates/ita-server/src/units/{mod,topology}.rs`，server 首次对外暴露 unit 拓扑类型与
+  无环校验，版本推进到 0.1.42。契约层面新增一组形状：`UnitId` 是校验过的标签名义类型（小写字母数字
+  加连字符、非空、首尾不连字符、不连续连字符），与 systemd unit 命名同型，`Ord` 是标签词典序供最小堆
+  排序，`Hash` 供边集合去重；`DepKind` 三变体（Requires/Wants/After）在图结构里方向相同，种类只记录
+  不消费；`Topology` 的 `find_cycle` 用 DFS 三色标记在三种边的并集图上找环，撞灰节点即提取闭合环路径
+  （首等于尾），归一为从最小标签起；`startup_order` 先查环，无环则做 Kahn 加最小堆，产出词典序最小的
+  拓扑序，入度按并集邻接表数（同一对 unit 的多种类边只算一次，与松弛次数一致）。`lease ↔ tools` 的
+  双向记号落成单方向边（lease 依赖 tools，tools 先启动），在 mod.rs 文档注释写明裁决。07.1 不新增
+  依赖、不建表、不碰 tokio，`lib.rs` 只加一行 `pub mod units;`。
