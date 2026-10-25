@@ -27,7 +27,9 @@ fn hash_hex(content: &[u8]) -> String {
 }
 
 /// 哈希对应的文件路径：CAS 根目录下，前两个十六进制字符是子目录，完整哈希是文件名。
-fn blob_path(cas_root: &Path, hash: &str) -> PathBuf {
+///
+/// 回收的文件清扫也按这个布局删文件，因此路径推导是 crate 内部共享的。
+pub(crate) fn blob_path(cas_root: &Path, hash: &str) -> PathBuf {
     cas_root.join(&hash[..2]).join(hash)
 }
 

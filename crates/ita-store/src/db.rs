@@ -16,6 +16,7 @@ use crate::align::{self, AlignResult};
 use crate::cas;
 use crate::entries::{self, SnapshotEntry};
 use crate::events::{self, AppendedEvent, Event, NewEvent};
+use crate::gc::{self, GcResult};
 use crate::migrate::{self, MigrateError};
 use crate::preview::PreviewLimit;
 use crate::retention::{self, RebaseRequest};
@@ -459,6 +460,35 @@ impl Store {
         let result = align::align_in(&tx, scope, target, range, force, &cas_root)?;
         tx.commit()?;
         Ok(result)
+    }
+
+    /// 回收：全局标记-清除加宽限期，删无引用且超宽限期的 blob。
+    ///
+    /// # 步骤
+    /// 1. 开一个立即事务。
+    /// 2. 在事务内清扫行：标记、两观协议、删无引用且超宽限期的行。
+    /// 3. 提交。
+    /// 4. 提交后清扫文件：删被删行的文件、清扫孤儿文件。
+    ///
+    /// # 边界与前提
+    /// 回收是全局操作，不按工作区过滤：`blobs` 表不带工作区列，全局去重。`grace_period` 是
+    /// 宽限期（epoch 毫秒），由调用方从配置读出后传入（ADR 0018 要求配置入口）。`extra_roots`
+    /// 是活跃租约引用的哈希列表（租约根），由调用方从租约表读出后传入，存储层不解析租约表。
+    /// 宽限期是两观协议：第一次观察只写不删，第二次观察才删。
+    ///
+    /// # 副作用
+    /// 写 `blobs` 表，删 CAS 目录下的文件。
+    pub fn gc(
+        &mut self,
+        grace_period: i64,
+        extra_roots: &[String],
+    ) -> Result<GcResult, StoreError> {
+        let cas_root = self.cas_root.clone();
+        let tx = self.conn_mut().transaction()?;
+        let (deleted, observed) = gc::sweep_in(&tx, grace_period, extra_roots)?;
+        tx.commit()?;
+        let orphan_files = gc::sweep_files(self.conn(), &cas_root, &deleted)?;
+        Ok(GcResult { deleted: deleted.len() as u64, observed, orphan_files })
     }
 
     /// 供 crate 内部模块使用的连接。
