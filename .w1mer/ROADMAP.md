@@ -57,7 +57,7 @@ contracts they freeze. Nothing else opens before 01 and 02 are done.
 | 02.6 | 单二进制角色分发与 worker 空壳 | .w1mer/detail/01_plan-02.md | done | 0 | ita 二进制可按角色分发，版本来自清单，三个角色占位退出 0、未知角色退出 2；九项测试全绿，CI 的空测试集豁免已按标注删除；版本 0.1.6 |
 | 02.7 | 收口：文档同步与骨架验收 | .w1mer/detail/01_plan-02.md | done | 0 | 十一个 crate 与目录一一对应，STACK 的五条命令与 CI 逐条一致且都带锁，STRUCTURE 增加状态段区分目标与现状；版本 0.1.7，骨架史诗完成 |
 | 02.8 | 分层与能力归属门：依赖方向由 CI 检查 | .w1mer/detail/01_plan-02.md | done | 0 | 分层与能力归属门落地：脚本把依赖方向、能力归属与二进制形态三类断言做成 CI 门，五条注入路径实测被拒、worker 的 dev 依赖 rusqlite 对照放行；STACK 与 STRUCTURE 同步允许表，复审六条问题全部关闭，版本 0.1.30 |
-| 02.9 | CI 验证体系补强：MSRV、统一入口与门自测 | .w1mer/detail/01_plan-02.md | todo | 0 | |
+| 02.9 | CI 验证体系补强：MSRV、统一入口与门自测 | .w1mer/detail/01_plan-02.md | done | 0 | CI 验证体系补强落地：verify.sh 五阶段统一本地与 CI，四个 job 共用；MSRV 1.85 由独立 job 验证并改写两处 let-chains；分层门新增 --metadata 入口与 15 项自测（含规则删除反证），rustdoc、doctest 与 shellcheck 进门；版本 0.1.31 |
 
 
 
