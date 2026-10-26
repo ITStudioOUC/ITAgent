@@ -167,6 +167,9 @@ version = "0.1.45"
 [[package]]
 name = "ita-proto"
 version = "0.1.45"
+dependencies = [
+ "ita-kernel",
+]
 
 [[package]]
 name = "ita-sandbox"
