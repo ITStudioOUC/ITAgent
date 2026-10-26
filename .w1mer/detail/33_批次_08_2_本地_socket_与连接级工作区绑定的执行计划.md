@@ -14,7 +14,7 @@ state: active
 2. **本地 socket 是 unix domain socket，server 是监听方、worker 是客户端。** ADR 0002 的硬边界是「全系统一个 SQLite 数据库文件，只由 server 进程打开，worker、执行器、工具都不持有数据库连接，所有读写经 server 的 IPC 完成。把写集中到 server 的代价是 server 进入关键路径：每个工具调用前的租约获取、每次事件追加都要过一次本地 socket」。因此 socket 是 unix domain socket（同机，可取 peer 凭据），server 是监听方（`ipc` unit），worker 是客户端。08.2 建 server 侧的监听方与连接级工作区绑定，worker 侧的客户端是后续批次的事。
 3. **I/O 模型是同步 `std::net`，每连接一个线程，不引入 tokio。** 工作区没有 tokio（根 `Cargo.toml` 的 `workspace.dependencies` 没有 tokio），分层门不挡 `std::net`（门的注释明确「`std::net`、`tokio::net`、构建脚本内的网络访问、传递依赖与 `pub use` 转出口都不在检查范围内」）。08.2 的验收是「握手后一次请求得到响应，断开后绑定释放」，是单次请求/响应循环。同步的每连接线程模型足够且可重做：08.3 的权威与遥测分流与有界队列、08.4 的 group commit 会在连接线程之上叠加，socket 层不需要改。引入 tokio 是 ADR 没有要求的大依赖决策，与 08.1 守的「零新增外部依赖」纪律冲突。
 4. **握手是客户端带 `SessionId` 的消息，server 从 `sessions` 表查会话的工作区并把连接绑定到该工作区。** ADR 0002 的硬边界是「workspace 是会话属性，不是请求参数。server 从连接身份（同机取 peer 凭据）和握手时的会话信息推导工作区，请求信封里不出现 workspace 字段」。握手带 `SessionId`，server 从 `sessions` 表查会话的工作区（`sessions` 表有 `workspace_id` 列）。peer 凭据（SO_PEERCRED）被读取并记录为连接身份，但工作区来自会话。这是「workspace 是会话属性，不是请求参数」的最强形式。
-5. **请求信封是 08.1 建的 `Invocation`，响应是 08.1 建的 `Response`，handler 的入参类型只有 `Invocation`。** 08.1 的 `Handler` trait 签名是 `fn handle(&self, invocation: Invocation) -> Result<Response, HandlerError>`。workspace 被捕获在 handler 的 `self`（`WorkspaceScope`）里，而不是出现在参数列表里。`ita-proto` 的 `Handler` trait 是泛型的（不引用 `WorkspaceScope`），具体 handler（在 `ita-server`）把 `WorkspaceScope` 放在 `self` 里。workspace 绝不出现在 handler 的参数列表里——它在 handler 的 `self` 里。这是 ADR 0002 的保证。
+5. **请求信封是 08.1 建的 `Invocation`，响应是 08.1 建的 `Response`，handler 的入参类型只有 `Invocation`。** 08.1 的 `Handler` trait 签名是 `fn handle(&self, invocation: Invocation) -> Result<Response, HandlerError>`。08.1 已提交的 `Response` 类型是 `{ stdout: Vec<u8>, stderr: Vec<u8>, exit_code: i32 }`（工具调用的可观察结果）。workspace 被捕获在 handler 的 `self`（`WorkspaceScope`）里，而不是出现在参数列表里。`ita-proto` 的 `Handler` trait 是泛型的（不引用 `WorkspaceScope`），具体 handler（在 `ita-server`）把 `WorkspaceScope` 放在 `self` 里。workspace 绝不出现在 handler 的参数列表里——它在 handler 的 `self` 里。这是 ADR 0002 的保证。
 6. **socket 路径是构造参数，配置结构是后续批次的事。** ADR 0018 的参数表是内核参数（快照保留、租约 TTL 等），socket 路径是 server I/O 参数，不在参数表里。「全部参数都要有配置入口」的总原则仍是好准则，但 08.2 的最小做法是：socket 路径是构造参数。配置结构（持有 socket 路径作为可调参数）是后续批次的事。
 7. **08.2 的 handler 是返回固定 `Response` 的桩，真实 handler 是 08.3 及后续批次的事。** 桩 handler 把连接的 `WorkspaceScope` 捕获在 `self` 里，返回固定的 `Response`。真实 handler（事件追加等）是 08.3 及后续批次的事。桩的目的是证明请求/响应循环工作。
 
@@ -56,9 +56,13 @@ peer 凭据（SO_PEERCRED）被读取并记录为连接身份（`ConnState` 的 
 
 `ConnectionId` 是 `u32` 计数器（连接的索引）。server 给每个新连接分配一个 `ConnectionId`。连接断开时，`ConnState` 从连接表移除。连接表是 `Mutex<HashMap<ConnectionId, ConnState>>`（多线程访问）。
 
+`Store` 句柄不是 `Send`（它持有 `Connection`，而 `Connection` 不是 `Send`）。因此连接线程不能共享 `Store` 句柄。握手需要 `Store` 句柄做会话到工作区查询，所以握手在主线程（`IpcListener` 的线程）做，不在连接线程做。`IpcListener` 的 `accept` 循环是：接受连接，在主线程做握手（用 `Store` 句柄），握手成功则派生一个线程跑请求/响应循环（只传 `WorkspaceScope`，它是 `Clone` 且 `Send`），握手失败则关闭连接。这是同步的 `accept` 循环，对 08.2 的单次请求/响应循环足够。08.3 及后续批次的 `accept` 循环会更复杂（立即派生线程，在连接线程做握手），但 socket 层不需要改。
+
 ### 2.4 请求信封是 08.1 建的 `Invocation`，响应是 08.1 建的 `Response`
 
 请求/响应循环是：从 socket 读一个 `Invocation` 信封，解码它，查连接的 `ConnState`（取 `WorkspaceScope`），建一个持有 `WorkspaceScope` 的 handler，调 `handler.handle(invocation)`，编码并发一个 `Response`。handler 在 08.2 是桩。桩 handler 把 `WorkspaceScope` 捕获在 `self` 里，返回固定的 `Response`。真实 handler（事件追加等）是 08.3 及后续批次的事。
+
+08.1 已提交的 `Response` 类型是 `{ stdout: Vec<u8>, stderr: Vec<u8>, exit_code: i32 }`（工具调用的可观察结果：标准输出、标准错误与退出码）。桩 handler 返回固定的 `Response`（如 `Response { stdout: vec![], stderr: vec![], exit_code: 0 }`），不真正运行工具。08.1 的 `Handler` trait 签名是 `fn handle(&self, invocation: Invocation) -> Result<Response, HandlerError>`，`HandlerError` 是 `PolicyDenied`/`LeaseDenied`/`Failed` 三变体。桩 handler 返回 `Ok(Response)`，不返回 `Err`。
 
 ### 2.5 I/O 模型是同步 `std::net`，每连接一个线程，不引入 tokio
 
@@ -190,7 +194,7 @@ peer 凭据（SO_PEERCRED）被读取并记录为连接身份（`ConnState` 的 
 
 ### 10.4 08.1 产出类型核对：`Invocation`、`encode`/`decode`、`Handler`、`Response`、`ProtocolVersion`、`SupportedRange`、`negotiate`
 
-08.1 的执行计划（detail 32）产出 `Invocation`（`version`/`caller`/`session`/`cwd`/`argv`/`stdin`/`lease_id` 七字段，无 workspace 字段）、`Caller`（名义类型）、`encode`/`decode`（长度前缀文本编解码）、`Handler` trait（`fn handle(&self, invocation: Invocation) -> Result<Response, HandlerError>`）、`Response` 与 `HandlerError` 类型、`ProtocolVersion`（名义类型）、`SupportedRange`（`min`/`max` 两字段）、`negotiate` 纯函数。08.2 的 `Hello`/`HelloAck`/`HelloReject` 与 `Invocation`/`Response` 是同一 `ipc` 模块下的不同类型，互不混用。08.2 消费 08.1 的 `Invocation` 信封与 `Response` 类型，不重新实现信封与版本协商。
+08.1 已提交（提交 `5943ecb` 与 `bcb2176`）产出 `Invocation`（`version`/`caller`/`session`/`cwd`/`argv`/`stdin`/`lease_id` 七字段，无 workspace 字段）、`Caller`（名义类型）、`encode`/`decode`（长度前缀文本编解码）、`Handler` trait（`fn handle(&self, invocation: Invocation) -> Result<Response, HandlerError>`）、`Response`（`stdout: Vec<u8>`/`stderr: Vec<u8>`/`exit_code: i32`，工具调用的可观察结果）与 `HandlerError`（`PolicyDenied`/`LeaseDenied`/`Failed` 三变体）类型、`ProtocolVersion`（名义类型，`new(major)` 与 `major()`）、`SupportedRange`（`min`/`max` 两字段，`new(min, max)` 构造期校验下限不大于上限）、`negotiate` 纯函数、`CURRENT_PROTOCOL_VERSION`（版本 1）与 `DEFAULT_SUPPORTED_RANGE`（只接受当前版本）。08.2 的 `Hello`/`HelloAck`/`HelloReject` 与 `Invocation`/`Response` 是同一 `ipc` 模块下的不同类型，互不混用。08.2 消费 08.1 的 `Invocation` 信封与 `Response` 类型，不重新实现信封与版本协商。
 
 ### 10.5 五处补强
 
