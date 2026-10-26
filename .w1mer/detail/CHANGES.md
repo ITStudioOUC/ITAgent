@@ -481,3 +481,20 @@ state: active
   循环终止条件是 `step() == Blocked`，一个永远返回 `NotReady` 的探针会让 unit 永远停在 `Starting`、
   `step` 永远返回 `Progressed`、循环无限，无步数上限，探针收敛性由真实探针实现者保证，07.3 落地
   真实探针时须明确这条契约或在监督者加可配置步数上限。
+- 批次 07.3 新增 `crates/ita-server/src/units/{plan,activation}.rs` 与 `crates/ita-store/{migrations/0003_units.sql,src/units.rs}`，
+  server 首次对外暴露启动计划与启动门，存储层首次对外暴露 unit 状态读写，版本推进到 0.1.44。契约层面
+  新增一组形状：`StartupPlan` 是 `required`/`optional` 两个 `BTreeSet<UnitId>`，与拓扑交叉校验（计划里的
+  unit 必须在拓扑里、必需集非空、两集不相交），校验失败返回显式错误不静默继续；`activate(supervisor, plan)
+  -> ActivationResult` 是纯函数，必需 unit 状态 `Ready` 计入就绪列表、`Starting`/`Failed` 计入未就绪列表、
+  `NotStarted` 不计（被依赖阻塞不是根因），非必需 unit 状态 `Failed`/`NotStarted`/`Starting` 计入降级列表、
+  `Ready` 不计，未就绪列表为空返回 `Ready`（带降级列表）否则返回 `NotReady`（带未就绪列表）；`units` 表
+  建表只加不改（`id TEXT PRIMARY KEY`、`state TEXT NOT NULL CHECK (state IN ('ready','degraded','failed'))`、
+  `updated_at INTEGER NOT NULL`），`UnitState` 三值域是六状态状态机的投影（就绪记 `ready`、非必需失败或仍
+  启动中记 `degraded`、必需失败记 `failed`），`set_unit_state` 是 upsert、`read_unit_state` 不存在返回
+  `None`、`read_all_unit_states` 按标识排序。启动门是纯判定不写库，降级标记是门之后的独立步骤（server 拿到
+  `Ready` 结果后写库），判定与持久化各归各位。两处实现者自报偏差已核对：telemetry 改 `Failed` 终态防
+  `run_until_blocked` 无限循环（七 unit 最小拓扑的启动顺序里 telemetry 在 tools 与 lease 之前，`NotReady`
+  保持 `Starting` 会被 `step()` 每步先碰到重探针并返回，tools 与 lease 永远启动不了，`Failed` 是终态不重
+  探针能推进到就绪），验收测试 10 的断言保持、降级列表不变；`NotStarted` 必需 unit 不计入未就绪跟随验收
+  测试 1（只计根因 unit），自洽。
+  
