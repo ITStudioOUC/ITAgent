@@ -7,8 +7,12 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod envelope;
 pub mod version;
 
+pub use envelope::{
+    Caller, CallerError, DecodeError, Handler, HandlerError, Invocation, Response, decode, encode,
+};
 pub use version::{
     Accepted, CURRENT_PROTOCOL_VERSION, DEFAULT_SUPPORTED_RANGE, InvertedRange, ProtocolVersion,
     Rejected, SupportedRange, negotiate,
