@@ -47,8 +47,9 @@
 - `Tree` / `HeadToken`（`tree.rs`）：head 令牌带（会话, 节点, 代次）。代次是单调的，解决
   "回退到祖先再前进"后旧令牌重新变成当前值的 ABA 问题；会话字段防止两个从同一节点分叉的
   子会话互相推进。`append` 只允许接在当前 head 之后；`rewind` 只能到祖先。
-- `NodeId` 等五个 id 类型（`ids.rs`）：26 字符 ULID 文本，Crockford base32，首位只允许 0–7。
-  用名义类型区分，`NodeId` 与 `SessionId` 不可互换。
+- `NodeId` 等六个 id 类型（`ids.rs`）：26 字符 ULID 文本，Crockford base32，首位只允许 0–7。
+  用名义类型区分，`NodeId` 与 `SessionId` 不可互换。`LeaseId` 是租约标识，嵌套调用继承外层
+  租约时传它，不传裸 ULID 串。
 - `ResolveInput` / `CheckpointFacts`（`input.rs`）：`resolve()` 需要的一切外部状态都由调用方
   装进来。`validate()` 校验结构自洽：帧不重叠、帧引用的检查点都有事实、recent/current 里不出
   现帧或固定层。

@@ -368,3 +368,64 @@ seq 从 `workspace_seq` 计数器读改写分配，不用 `MAX(seq) + 1`。第 3
 降级区分、失败计入降级、七 unit 最小拓扑、空记录得空能力集、输出按标签排序）、`watch.rs`
 6 项（订阅先收完整能力集、降级后收带版本号的增量、版本号单调递增、能力集读 `units` 表、
 两个订阅者都收到推送、通道承载通用能力变更消息）。全仓测试总数从 449 项增至 461 项。
+
+## 08.1 Invocation 信封与版本协商
+
+结论：信封与版本协商落地。`Invocation` 七个字段（`version`/`caller`/`session`/`cwd`/`argv`/
+`stdin`/`lease_id`）里没有 workspace 字段，工作区由 server 从连接身份推导，不是请求参数；
+`Handler` 的入参类型只有 `Invocation`，handler 拿不到 workspace，这条由编译器保证。
+编解码是长度前缀文本：每个字段先写大端 4 字节长度前缀再写内容，与帧正文的长度前缀文本
+同型，不引入 serde。版本协商是纯函数，请求版本落在闭区间 `min..=max` 内返回 `Accepted`，
+否则
+返回 `Rejected { supported }`，回显支持范围。计划第四节的十条验收全部写成测试并通过，
+五处裁决逐条守住：`argv` 是内核的 `Command` AST 不是裸命令串；`stdin` 是 heredoc 正文之外的
+独立输入流；`lease_id` 是内核的 `LeaseId` 名义类型；版本是 `u32` 主版本号不是 semver 三元组；
+支持范围是 `SupportedRange` 类型与默认值常量，读取走配置结构。本批不建 socket、不引入
+tokio、不碰网络，零新增外部依赖。
+
+### 提交
+
+| 提交 | 主题 | 改动 |
+|---|---|---|
+| `c850ccf` | 内核新增租约标识符名义类型，嵌套调用继承外层租约有类型可传 | `ids.rs` 用既有 `id_type!` 宏加 `LeaseId`（与 `NodeId`/`SessionId` 同型），`context/mod.rs` 重新导出，内联测试 |
+| `bcb2176` | 协议版本协商纯函数，区间外拒绝并回显支持范围 | `version.rs` 新建 `ProtocolVersion`、`SupportedRange`（构造期校验 `min <= max`）、`negotiate`、`Accepted`、`Rejected` 与默认支持范围常量（含 6 项内联测试）；`lib.rs` 声明模块并再导出 |
+| `5943ecb` | Invocation 信封与长度前缀编解码，handler 入参无 workspace 字段 | `envelope.rs` 新建 `Invocation`、`Caller`、`encode`/`decode`、`Handler` trait、`Response` 与 `HandlerError`（含 12 项内联测试）；`lib.rs` 声明模块并再导出；`Cargo.toml` 加 `ita-kernel` 一条依赖 |
+
+### 验收覆盖
+
+| 验收 | 用例 |
+|---|---|
+| 同版本往返一致 | `round_trip_is_identical` |
+| 不兼容版本明确报错，回显支持范围 | `incompatible_version_is_rejected_with_supported_range` |
+| 兼容版本被接受 | `compatible_version_is_accepted` |
+| 支持范围边界值被接受，区间外被拒 | `boundary_versions_min_and_max_are_accepted`、`versions_outside_bounds_are_rejected` |
+| handler 无法表达 workspace | `handler_cannot_express_workspace` |
+| 信封的 argv 是内核的 Command AST | `argv_round_trips_command_ast` |
+| stdin 是 heredoc 正文之外的独立输入流 | `stdin_round_trips_independent_input_stream` |
+| lease_id 是嵌套调用继承外层租约的标识 | `lease_id_round_trips_outer_lease_marker` |
+| 支持范围是可调参数，构造期校验 | `inverted_range_is_rejected_at_construction`、`single_version_range_is_legal_and_default_is_one` |
+| 不建 socket、不引入 tokio、不碰网络 | `Cargo.toml` 只加 `ita-kernel` 一条依赖，零新增外部依赖（清单级核对） |
+
+### 验证
+
+| 命令 | 退出码 | 结果 |
+|---|---|---|
+| `cargo build --workspace --locked` | 0 | 全工作区构建通过 |
+| `cargo nextest run --workspace --locked` | 0 | 480 项通过，0 项跳过（新增 19 项） |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | 零告警 |
+| `cargo fmt --all --check` | 0 | 无需格式化 |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | 0 | 文档构建通过 |
+| `cargo test --doc --workspace --locked` | 0 | doctest 通过 |
+| `bash .w1mer/scripts/check_layers.sh` | 0 | 分层门通过 |
+| `bash .w1mer/scripts/check_kernel_purity.sh` | 0 | 内核纯净门通过 |
+| `shellcheck .w1mer/scripts/*.sh` | 0 | shell 脚本静态检查通过 |
+
+### 新增测试分布
+
+新增 19 项测试：`ita-kernel` 的 `ids.rs` 1 项（`LeaseId` 接受规范 26 字符 Crockford base32
+串、文本形式往返不丢信息、类型名用于诊断）；`ita-proto` 的 `version.rs` 6 项（区间外拒绝并
+回显支持范围、区间内接受、边界值接受、区间外拒绝、倒置范围构造期被拒、单版本范围合法且
+默认范围是它）与 `envelope.rs` 12 项（往返一致、handler 入参无 workspace、argv 是 Command
+AST、stdin 独立输入流、lease_id 继承外层租约、截断被拒、多余字节被拒、未知方向字节被拒、
+未知存在标志被拒、非法会话 id 被拒、非法调用者标签被拒、调用者标签校验规则）。全仓测试
+总数从 461 项增至 480 项。

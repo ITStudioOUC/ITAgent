@@ -497,4 +497,17 @@ state: active
   保持 `Starting` 会被 `step()` 每步先碰到重探针并返回，tools 与 lease 永远启动不了，`Failed` 是终态不重
   探针能推进到就绪），验收测试 10 的断言保持、降级列表不变；`NotStarted` 必需 unit 不计入未就绪跟随验收
   测试 1（只计根因 unit），自洽。
+- 批次 07.4 新增 `crates/ita-server/src/units/{capability,watch}.rs`，server 首次对外暴露能力集快照与
+  进程内变更推送，版本推进到 0.1.45。契约层面新增一组形状：`CapabilitySet` 带 `version`/`ready`/
+  `degraded` 三字段，是 unit 就绪状态的投影（`ready` 进就绪列表、`degraded` 与 `failed` 进降级列表，
+  两列表按标签排序、不相交），`build_capability_set` 是纯函数；`CapabilityWatcher` 持 `Store` 句柄，
+  `subscribe` 注册订阅者并立即推送当前完整能力集，`notify_change` 读 `units` 表重建、版本号递增一次、
+  向全部订阅者推送带版本号的完整能力集。`CapabilityUpdate` 是单变体枚举（`CapabilitySet`），是通用的
+  能力变更消息包装，工具目录追加以后在同一通道上加为第二种消息，机制相同。能力集读 `units` 表不读
+  内存状态（与 07.3 激活门读表恢复 unit 状态同型），版本号是进程内计数器不落库（本批零新增迁移），
+  推送是进程内同步 watch 通道（不引入 tokio、不建 socket，真实 socket 推送是 08.2 的事）。`units` 表
+  契约（07.3 产出）从此多了一个消费者：能力集快照，表的三值域是能力集的输入，store 契约未动。
+  `mod.rs` 声明 `capability` 与 `watch` 两模块并再导出 `CapabilitySet`、`build_capability_set`、
+  `CapabilityUpdate`、`CapabilityWatcher`，模块头注释同步。07.4 不新增依赖、不改 `ita-store`、不碰
+  tokio，能力集类型独立于 `ita-workflow` 节点类型，不与工作流混用。
   
