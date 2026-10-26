@@ -150,34 +150,34 @@ dependencies = [
 
 [[package]]
 name = "ita-cli"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-exec"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-kernel"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-model"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-proto"
-version = "0.1.45"
+version = "0.2.0"
 dependencies = [
  "ita-kernel",
 ]
 
 [[package]]
 name = "ita-sandbox"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-server"
-version = "0.1.45"
+version = "0.2.0"
 dependencies = [
  "ita-model",
  "ita-proto",
@@ -187,7 +187,7 @@ dependencies = [
 
 [[package]]
 name = "ita-store"
-version = "0.1.45"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "ita-kernel",
@@ -197,15 +197,15 @@ dependencies = [
 
 [[package]]
 name = "ita-tools"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-worker"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "ita-workflow"
-version = "0.1.45"
+version = "0.2.0"
 
 [[package]]
 name = "js-sys"
