@@ -1,6 +1,6 @@
 //! 标识符类型。
 //!
-//! 五种 id 都是 26 字符的 ULID 文本形式。用专用类型而不是裸 `String`，是为了让"把节点
+//! 六种 id 都是 26 字符的 ULID 文本形式。用专用类型而不是裸 `String`，是为了让"把节点
 //! id 当会话 id 传"这类错误在编译期就被拦住——它们在三处以上同时出现，靠命名区分不够。
 
 use std::fmt;
@@ -42,7 +42,7 @@ impl std::error::Error for IdError {}
 
 /// 生成一个带具体类型的 id。
 ///
-/// 五个类型共用同一套校验与格式化，差异只在类型本身。用宏而不是泛型，是为了让每个类型
+/// 六个类型共用同一套校验与格式化，差异只在类型本身。用宏而不是泛型，是为了让每个类型
 /// 都是独立的名义类型：`fn f(NodeId)` 与 `fn f(SessionId)` 不可互换。
 macro_rules! id_type {
     ($(#[$meta:meta])* $name:ident, $label:literal) => {
@@ -128,6 +128,12 @@ id_type!(
     EventId,
     "事件"
 );
+id_type!(
+    /// 一张租约。一次工具调用一张租约，多路径排序后原子获取；嵌套调用继承外层租约而不
+    /// 新建。
+    LeaseId,
+    "租约"
+);
 
 #[cfg(test)]
 mod tests {
@@ -135,7 +141,7 @@ mod tests {
 
     const VALID: &str = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
-    /// 五种标识符都接受规范的 26 字符 Crockford base32 串。
+    /// 六种标识符都接受规范的 26 字符 Crockford base32 串。
     #[test]
     fn valid_identifier_is_accepted() {
         assert!(NodeId::parse(VALID).is_ok());
@@ -143,6 +149,17 @@ mod tests {
         assert!(WorkspaceId::parse(VALID).is_ok());
         assert!(CheckpointId::parse(VALID).is_ok());
         assert!(EventId::parse(VALID).is_ok());
+        assert!(LeaseId::parse(VALID).is_ok());
+    }
+
+    /// 租约标识符接受规范的 26 字符 Crockford base32 串，文本形式往返不丢信息，类型名
+    /// 用于诊断。
+    #[test]
+    fn lease_id_round_trips_and_reports_kind() {
+        let id = LeaseId::parse(VALID).expect("应当合法");
+        assert_eq!(id.as_str(), VALID);
+        assert_eq!(id.to_string(), VALID);
+        assert_eq!(LeaseId::kind(), "租约");
     }
 
     /// 长度不符的串被拒，且错误里带上实际长度，让调用方看见错在哪。
