@@ -6,3 +6,10 @@
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+
+pub mod version;
+
+pub use version::{
+    Accepted, CURRENT_PROTOCOL_VERSION, DEFAULT_SUPPORTED_RANGE, InvertedRange, ProtocolVersion,
+    Rejected, SupportedRange, negotiate,
+};
