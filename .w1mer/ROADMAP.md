@@ -141,7 +141,6 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | # | Task | Doc | Status | Defer | Effect |
 |---|------|-----|--------|-------|--------|
 <!-- w1mer:task:server -->
-| 08.1 | Invocation 信封与版本协商 | .w1mer/detail/07_plan-08.md | done | 0 | 信封七字段无 workspace，长度前缀编解码往返一致，版本协商闭区间拒绝回显支持范围，handler 入参只有 Invocation；480 项测试全绿，版本 0.2.0 |
 | 08.2 | 本地 socket 与连接级工作区绑定 | .w1mer/detail/07_plan-08.md | todo | 0 |
 | 08.3 | 权威与遥测分流、有界队列与背压 | .w1mer/detail/07_plan-08.md | todo | 0 |
 | 08.4 | group commit：5 毫秒或 256 条 | .w1mer/detail/07_plan-08.md | todo | 0 |
@@ -165,6 +164,7 @@ Single DB, server is the only writer, workers are stateless and DB-blind.
 | 07.2 | 状态机、就绪探针与停止顺序 | .w1mer/detail/06_plan-07.md | done | 0 | unit 状态机、就绪探针与监督者落地：六状态加纯转移函数非法转移返回 None、就绪探针三值结果加可注入 trait、监督者按拓扑序启动逆序停止失败不级联重启；十条验收全过，430 项测试全绿 |
 | 07.3 | 必需与非必需启动门与降级 | .w1mer/detail/06_plan-07.md | done | 0 | 必需与非必需启动门与降级落地：StartupPlan 声明必需与非必需 unit 并与拓扑交叉校验，activate 纯函数必需全部 Ready 才就绪、非必需失败只标记降级，units 表建表与 unit 状态读写落库；十条验收全过，449 项测试全绿 |
 | 07.4 | 能力集快照与变更推送 | .w1mer/detail/06_plan-07.md | done | 0 | 能力集快照与进程内变更推送落地：CapabilitySet 是 unit 就绪状态的投影、build_capability_set 纯函数、CapabilityWatcher 进程内 watch 通道向订阅者推带版本号的完整能力集，零新增依赖不碰 tokio；十条验收全过，461 项测试全绿 |
+| 08.1 | Invocation 信封与版本协商 | .w1mer/detail/07_plan-08.md | done | 0 | 信封七字段无 workspace，长度前缀编解码往返一致，版本协商闭区间拒绝回显支持范围，handler 入参只有 Invocation；480 项测试全绿，版本 0.2.0 |
 
 
 

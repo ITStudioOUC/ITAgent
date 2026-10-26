@@ -510,4 +510,20 @@ state: active
   `mod.rs` 声明 `capability` 与 `watch` 两模块并再导出 `CapabilitySet`、`build_capability_set`、
   `CapabilityUpdate`、`CapabilityWatcher`，模块头注释同步。07.4 不新增依赖、不改 `ita-store`、不碰
   tokio，能力集类型独立于 `ita-workflow` 节点类型，不与工作流混用。
+ - 批次 08.1 与子批次 08.1.1 落地 server 与 worker 之间的 IPC 信封与版本协商，并收尾被中断的 08.1
+   实现。08.1 在 `crates/ita-proto` 新建 `envelope.rs` 与 `version.rs`，契约层面新增一组形状：
+   `Invocation` 是七字段信封（version、caller、session、cwd、argv、stdin、lease_id），没有 workspace
+   字段，工作区由 server 从连接身份推导，不进请求参数；`argv` 是内核的命令 AST，执行器消费它做权限
+   预检与租约获取，不重新解析命令；`Caller` 是校验过的标签名义类型；`encode`/`decode` 是长度前缀
+   文本编解码，不引入 serde；`Handler` trait 的入参类型只有 `Invocation`，没有 workspace 参数，由
+   编译器保证；`Response` 是 stdout、stderr、exit_code 三字段，`HandlerError` 是 PolicyDenied、
+   LeaseDenied、Failed 三变体，策略拒绝与租约拒绝分开。版本协商是纯函数：`ProtocolVersion` 是名义
+   类型，`SupportedRange` 构造期校验下限不大于上限，`negotiate` 闭区间判定、区间外拒绝并回显支持
+   范围，`CURRENT_PROTOCOL_VERSION` 是版本 1、`DEFAULT_SUPPORTED_RANGE` 只接受当前版本。08.1 在
+   `ita-proto` 的 `Cargo.toml` 加 `ita-kernel` 一条依赖（信封的 argv 是内核的命令 AST，会话与租约
+   标识符是内核的名义类型），分层门允许表已登记。08.1 实现被中断，08.1.1 子批次收尾：同步锁文件里
+   ita-proto 对 ita-kernel 的依赖（清单有、锁文件无，CI 的 `--locked` 会失败），按史诗模式把版本从
+   0.1.45 推进到 0.2.0（N 加一且 P 归零，十一个本地成员的锁文件条目同步），归档 08.2 的勘察计划
+   （detail 33）并把对 08.1 产出类型的描述与已提交代码对齐。08.1.1 不新增依赖、不改信封与版本协商
+   的代码，只动锁文件、版本与勘察文档。
   
